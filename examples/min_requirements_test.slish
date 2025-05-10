@@ -1,0 +1,136 @@
+# Test minimalnych wymagań dla języka Slish
+
+# 1. Testowanie typów zmiennych
+/int x = 42
+/float y = 3.14
+# Deklaracja bez określonego typu (dynamiczna)
+/_ dynamicVar = "tekst"
+
+# 2. Operacje arytmetyczne
+/int a = 5
+/int b = 3
+/int result = /add(a, b)  # Dodawanie: 5 + 3 = 8
+/print(/add(a, 5))        # Wyświetlenie: 10
+
+# Składnia używająca potoku (alternatywna)
+a | /add(b) | /print      # Alternatywne wywołanie add z potokiem
+
+# 3. Instrukcja warunkowa if-else - poprawiona składnia
+/if (/gt(x, 10)) {
+    /print("x jest większe od 10")
+} 
+/else {
+    /print("x jest mniejsze lub równe 10")
+}
+
+# 4. Zagnieżdżone if-else - poprawiona składnia
+/if (/gt(x, 100)) {
+    /print("x jest większe od 100")
+} 
+/else /if (/gt(x, 50)) {
+    /print("x jest większe od 50, ale mniejsze lub równe 100")
+} 
+/else {
+    /print("x jest mniejsze lub równe 50")
+}
+
+# 5. Pętla while - poprawiona składnia
+/int i = 0
+/while (/lt(i, 5)) {
+    /print("Iteracja: ")
+    /print(i)
+    /int i = /add(i, 1)
+}
+
+# 6. Pętla for - poprawiona składnia z wcześniejszą deklaracją zmiennej
+/int j = 0
+/for (/int j = 0; /lt(j, 3); /int j = /add(j, 1)) {
+    /print("For: ")
+    /print(j)
+}
+
+# 7. Funkcja użytkownika
+/fun dodaj(/int p1, /int p2) = {
+    /ret(/add(p1, p2))
+}
+
+# 8. Wywołanie funkcji użytkownika
+/int wynik = /dodaj(a, b)
+/print("Wynik funkcji: ")
+/print(wynik)
+
+# 9. Wejście od użytkownika
+/print("Podaj liczbę: ")
+/int input = /read
+/print("Podałeś: ")
+/print(input)
+
+# 10. Zasięg zmiennych - test zmiennych lokalnych
+/fun test_scope() = {
+    /int lokalnaZmienna = 99
+    /print(lokalnaZmienna)
+    # Zmienna globalna jest też dostępna
+    /print(x)
+}
+
+/test_scope()
+
+# 11. Interpolacja stringów
+/int intValue = 42
+/string interpolatedString = "Wartość: {intValue}"
+/print(interpolatedString)
+
+# 12. Operacje na tablicach
+/int[] array = [1, 2, 3, 4, 5]
+/print(array[2])  # Wypisze 3
+
+# Alternatywny dostęp do tablicy
+/print(array)
+/print(array[3]) 
+
+# -----------------------------------------------------
+# Alternatywne metody pisania z sekcji "Przykładowa składnia"
+# -----------------------------------------------------
+
+# Deklaracja funkcji void z użyciem typu void
+/void /fun printVoid(/string message) = {
+    /print(message)
+}
+
+# Wywołanie funkcji void
+/printVoid("Test funkcji void")
+
+# Funkcja z alternatywnym stylem zwracania wartości
+/fun addAlt(/int a, /int b) = {
+    a | /add(b) | /ret
+}
+
+# Wywołanie funkcji z alternatywnym stylem
+/int wynikAlt = /addAlt(10, 20)
+/print("Wynik alternatywnej funkcji: ")
+/print(wynikAlt)
+
+# Rzutowanie typów w potoku
+42 | /float | /_ floatResult = _
+/print("Rzutowany rezultat: ")
+/print(floatResult)
+
+# Instrukcje warunkowe jako funkcje potokowe
+x | /gt(0) | /if = {
+    /print("x jest większe od zera (potok)")
+}
+
+# Łańcuch potoków z przypisaniem wyniku
+[1, 2, 3, 4, 5] | /_ numbers = _
+numbers | /print
+
+# Operacje logiczne z potokami
+/bool logiczna = /eq(x, 42)
+logiczna | /print
+
+# Formatowanie wyjścia z interpolacją
+/string formattedString = "Zmienna x ma wartość: {x}"
+/print(formattedString)
+
+# Operacje na tablicach przez potoki
+array | /_ copied = _ | /print 

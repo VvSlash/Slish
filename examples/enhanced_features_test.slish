@@ -1,0 +1,87 @@
+# Test rozszerzonych funkcjonalności Slish: read z typami i pętla foreach
+
+# 1. Test funkcji read z różnymi typami
+/print("=== Test funkcji read z różnymi typami ===")
+
+# Wczytanie liczby całkowitej
+/print("Podaj liczbę całkowitą: ")
+/int intValue = /read
+/print("Wczytano liczbę całkowitą: ")
+/print(intValue)
+
+# Wczytanie liczby zmiennoprzecinkowej
+/print("Podaj liczbę zmiennoprzecinkową: ")
+/float floatValue = /read
+/print("Wczytano liczbę zmiennoprzecinkową: ")
+/print(floatValue)
+
+# Wczytanie łańcucha znaków
+/print("Podaj tekst: ")
+/string textValue = /read
+/print("Wczytano tekst: ")
+/print(textValue)
+
+# Alternatywna składnia z potokiem
+/print("Podaj dodatkowy tekst: ")
+/read | /string additionalText = _
+/print("Wczytano dodatkowy tekst: ")
+/print(additionalText)
+
+# 2. Test pętli foreach (iteracja po kolekcji)
+/print("\n=== Test pętli foreach ===")
+
+# Deklaracja tablicy liczb
+/int[] numbers = [10, 20, 30, 40, 50]
+
+# Standardowa pętla for do iteracji po tablicy
+/print("Standardowa pętla for:")
+/for(/int i = 0; /lt(i, 5); /int i = /add(i, 1)) {
+    /print(numbers[i])
+}
+
+# Pętla foreach po tablicy
+/print("Pętla foreach:")
+/for(numbers) {
+    /int item
+    /print(item)
+}
+
+# Test zagnieżdżonych pętli foreach
+/print("Zagnieżdżone pętle foreach:")
+/int[][] matrix = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+]
+
+/for(matrix) {
+    /int[] row
+    /for(row) {
+        /int cell
+        /print(cell)
+    }
+    /print("---")
+}
+
+# 3. Kombinacja read i foreach
+/print("\n=== Kombinacja read i foreach ===")
+/print("Podaj 3 liczby oddzielone spacjami:")
+/string input = /read
+
+# W przyszłej implementacji można dodać funkcję split do tokenizacji wejścia
+# Na razie używamy gotowej tablicy
+/int[] userNumbers = [0, 0, 0]
+
+/for(userNumbers) {
+    /int num
+    /print("Podaj wartość dla elementu tablicy:")
+    /int userNum = /read
+    # Przypisanie wczytanej wartości do tablicy
+    # (w przyszłej implementacji)
+}
+
+/print("Wczytane liczby:") 
+/for(userNumbers) {
+    /int n
+    /print(n)
+} 

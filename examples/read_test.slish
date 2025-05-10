@@ -1,0 +1,25 @@
+# Test funkcji wejścia i konwersji typów
+
+# Wczytanie liczby całkowitej
+/print("Podaj liczbę całkowitą: ")
+/int number = /read
+
+# Wyświetlenie wczytanej liczby
+/print("Wczytano liczbę: ")
+/print(number)
+
+# Obliczenia na wczytanej liczbie
+/int doubled = /add(number, number)
+/print("Podwojona liczba: ")
+/print(doubled)
+
+# Wczytanie łańcucha znaków
+/print("Podaj swoje imię: ")
+/string name = /read
+
+# Wyświetlenie wczytanego łańcucha
+/print("Witaj, ")
+/print(name)
+
+# Interpolacja stringów z wczytanymi danymi
+/print("Podsumowanie: {name} wprowadził(a) liczbę {number}") 

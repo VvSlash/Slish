@@ -1,0 +1,71 @@
+# Pliki skompilowane i wynikowe
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.class
+*.jar
+target/
+build/
+dist/
+*.log
+*~
+*.tmp
+*.swp
+NUL
+
+# Pliki generowane przez IDE
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sdf
+*.opensdf
+*.VC.db
+*.iml
+
+# Pliki specyficzne dla systemu operacyjnego
+.DS_Store
+Thumbs.db
+
+# Pliki specyficzne dla narzędzi do budowania CMake (jeśli używane)
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+
+# Pliki zależności Maven (zazwyczaj nie są wrzucane, jeśli repozytorium jest skonfigurowane)
+# Możesz odkomentować, jeśli przechowujesz zależności lokalnie w niestandardowy sposób
+# lib/
+# vendor/
+
+# Możliwe podejścia do plików ANTLR:
+
+# Opcja 1: Ignorowanie wszystkich wygenerowanych plików ANTLR
+# Odkomentuj poniższe, jeśli chcesz ignorować wszystkie wygenerowane pliki
+# Poniższe wzorce odnoszą się TYLKO do plików generowanych przez ANTLR (nie do ręcznie pisanych plików)
+src/main/java/pl/edu/pw/slish/SlishLexer.java
+src/main/java/pl/edu/pw/slish/SlishParser.java
+src/main/java/pl/edu/pw/slish/SlishBaseListener.java
+src/main/java/pl/edu/pw/slish/SlishListener.java
+src/main/java/pl/edu/pw/slish/SlishBaseVisitor.java
+src/main/java/pl/edu/pw/slish/SlishVisitor.java
+src/main/java/pl/edu/pw/slish/*.tokens
+src/main/java/pl/edu/pw/slish/*.interp
+src/main/generated-sources/
+src/main/antlr4/.antlr/
+
+# Opcja 2: Śledzenie plików ANTLR w repozytorium (zalecane dla projektów akademickich)
+# Domyślnie, pozostawiamy te pliki śledzone, aby inni mogli łatwiej uruchomić projekt
+
+# Jednak tymczasowe pliki ANTLR można zawsze zignorować:
+*.tokens
+*.interp
+#.antlr/
+
+# Pliki konfiguracyjne użytkownika
+# Np. lokalne ustawienia, których nie chcesz współdzielić
+# local.properties 

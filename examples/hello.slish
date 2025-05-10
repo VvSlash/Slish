@@ -1,0 +1,12 @@
+# Prosty program testowy w języku Slish
+
+/string msg = "Hello, World!"
+msg | /print
+
+# Przykład użycia funkcji
+/fun add(/int a, /int b) = {
+    a | /add(b) | /ret
+}
+
+/int x = /add(5, 3)
+"Wynik: {x}" | /print 

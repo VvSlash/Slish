@@ -1,0 +1,8 @@
+# Bardzo prosty przykład do testowania kompilatora
+
+/int x = 42
+/float y = 3.14
+
+/if(/gt(x, 10)) {
+    "x jest większe od 10" | /print
+} 

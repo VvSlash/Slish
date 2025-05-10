@@ -1,0 +1,55 @@
+# Test podstawowych funkcjonalności języka Slish
+
+# 1. Zmienne i typy podstawowe
+/int x = 42
+/float y = 3.14
+/string text = "Hello, Slish!"
+/_ dynamic = "dynamic typing"
+
+# 2. Operacje arytmetyczne
+/int a = 5
+/int b = 3
+/int sum = /add(a, b)  # sum = 8
+
+# 3. Instrukcje warunkowe
+/if (/gt(a, b)) {
+    /print("a jest większe od b")
+} 
+/else {
+    /print("a nie jest większe od b")
+}
+
+# 4. Tablice
+/int[] numbers = [1, 2, 3, 4, 5]
+/print(numbers[2])  # Wypisze 3
+
+# 5. Wejście/wyjście
+/print("Wprowadź liczbę:")
+
+# Prosta pętla while
+/int counter = 0
+/while(/lt(counter, 3)) {
+    "Licznik: " | /print
+    counter | /print
+    /int counter = /add(counter, 1)
+}
+
+# Prosta funkcja
+/fun suma(/int a, /int b) {
+    /int wynik = /add(a, b)
+    wynik | /ret
+}
+
+# Wywołanie funkcji
+/int result = /suma(5, 3)
+"Wynik: " | /print
+result | /print
+
+# Prosty test zasięgu zmiennych
+/fun test_scope() {
+    /int lokalny = 100
+    lokalny | /print
+    x | /print
+}
+
+/test_scope() 

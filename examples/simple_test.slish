@@ -1,0 +1,23 @@
+# Prosty test funkcjonalności Slish
+
+# Zmienne
+/int x = 42
+/float y = 3.14
+
+# Instrukcja warunkowa
+/if(/gt(x, 10)) {
+    "x jest większe od 10" | /print
+}
+
+# Pętla while
+/int i = 0
+/while(/lt(i, 3)) {
+    i | /print
+    /int i = /add(i, 1)
+}
+
+# Funkcja
+/fun dodaj(/int a, /int b) = {
+    /int wynik = /add(a, b)
+    wynik | /ret
+} 

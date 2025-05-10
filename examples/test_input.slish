@@ -1,0 +1,121 @@
+# Test minimalnych wymagań dla języka Slish
+
+# 1. Testowanie typów zmiennych
+/int x = 42
+/float y = 3.14
+# Deklaracja bez określonego typu (dynamiczna)
+/_ dynamicVar = "tekst"
+
+# 2. Operacje arytmetyczne
+/int a = 5
+/int b = 3
+/int result = /add(a, b)  # Dodawanie: 5 + 3 = 8
+/print(/add(a, 5))        # Wyświetlenie: 10
+
+# Składnia używająca potoku (alternatywna)
+a | /add(b) | /print      # Alternatywne wywołanie add z potokiem
+
+# 3. Instrukcja warunkowa if-else
+/if(/gt(x, 10)) {
+    /print("x jest większe od 10")
+} 
+/else {
+    /print("x jest mniejsze lub równe 10")
+}
+
+# Alternatywna składnia if z operatorem potoku
+x | /gt(10) | /if {
+    "x jest większe od 10" | /print
+}
+
+# 4. Zagnieżdżone if-else
+/if(/gt(x, 100)) {
+    /print("x jest większe od 100")
+} 
+/else /if(/gt(x, 50)) {
+    /print("x jest większe od 50, ale mniejsze lub równe 100")
+} 
+/else {
+    /print("x jest mniejsze lub równe 50")
+}
+
+# 5. Pętla while
+/int i = 0
+/while(/lt(i, 5)) {
+    /print("Iteracja: ")
+    /print(i)
+    /int i = /add(i, 1)
+}
+
+# Alternatywna składnia while z operatorem potoku
+/int j = 0
+j | /lt(5) | /while {
+    j | /print
+    /int j = /add(j, 1)
+}
+
+# 6. Pętla for
+/for(/int j = 0; /lt(j, 3); /int j = /add(j, 1)) {
+    /print("For: ")
+    /print(j)
+}
+
+# 7. Funkcja użytkownika
+/fun dodaj(/int p1, /int p2) = {
+    /ret(/add(p1, p2))
+}
+
+# Alternatywna składnia funkcji używająca potoku
+/fun dodajAlternatywnie(/int p1, /int p2) = {
+    p1 | /add(p2) | /ret
+}
+
+# 8. Wywołanie funkcji użytkownika
+/int wynik = /dodaj(a, b)
+/print("Wynik funkcji: ")
+/print(wynik)
+
+# Alternatywne wywołanie funkcji przez potok
+a | /dodajAlternatywnie(b) | /int wynikAlt = _
+wynikAlt | /print
+
+# 9. Wejście od użytkownika
+/print("Podaj liczbę: ")
+/int input = /read
+/print("Podałeś: ")
+/print(input)
+
+# Alternatywna składnia z potokiem dla wejścia
+"Podaj kolejną liczbę: " | /print
+/read | /int inputAlt = _
+"Podałeś (alternatywna składnia): " | /print
+inputAlt | /print
+
+# 10. Zasięg zmiennych - test zmiennych lokalnych
+/fun test_scope() = {
+    /int lokalnaZmienna = 99
+    /print(lokalnaZmienna)
+    # Zmienna globalna jest też dostępna
+    /print(x)
+}
+
+/test_scope()
+
+# 11. Interpolacja stringów
+/int intValue = 42
+/string interpolatedString = "Wartość: {intValue}"
+/print(interpolatedString)
+
+# Alternatywna składnia interpolacji z potokami
+"Wartość przez potok: {intValue}" | /print
+
+# 12. Operacje na tablicach
+/int[] array = [1, 2, 3, 4, 5]
+/print(array[2])  # Wypisze 3
+
+# Alternatywny dostęp do tablic przez potok
+array | /print
+array[3] | /print
+
+# Próba dostępu do zmiennej lokalnej poza jej zasięgiem - powinien być błąd
+# /print(lokalnaZmienna) # zakomentowane, bo wywoła błąd 

@@ -1,0 +1,57 @@
+# Test zasięgu zmiennych i działania pętli
+
+# Zmienne globalne
+/int globalVar = 100
+
+# Test zasięgu w bloku
+{
+    /int localVar = 42
+    /print("Zmienna lokalna w bloku: ")
+    /print(localVar)
+    /print("Zmienna globalna dostępna w bloku: ")
+    /print(globalVar)
+}
+
+# Pętla while z aktualizacją zmiennej w ciele
+/int i = 0
+/while(/lt(i, 3)) {
+    /print("Wartość i w pętli while: ")
+    /print(i)
+    /int i = /add(i, 1)  # Aktualizacja zmiennej i
+}
+
+/print("Wartość i po pętli while: ")
+/print(i)
+
+# Pętla for z poprawnym krokiem iteracji
+/for(/int j = 0; /lt(j, 3); /int j = /add(j, 1)) {
+    /print("Wartość j w pętli for: ")
+    /print(j)
+}
+
+# Zagnieżdżone pętle i zasięg zmiennych
+/for(/int x = 0; /lt(x, 2); /int x = /add(x, 1)) {
+    /print("Zewnętrzna pętla, x = ")
+    /print(x)
+    
+    /for(/int y = 0; /lt(y, 2); /int y = /add(y, 1)) {
+        /print("  Wewnętrzna pętla, y = ")
+        /print(y)
+        /print("  Dostęp do x z zewnętrznej pętli: ")
+        /print(x)
+    }
+}
+
+# Test funkcji z parametrami i zmiennymi lokalnymi
+/fun testScope(/int param) {
+    /int localVar = 50
+    /print("Parametr funkcji: ")
+    /print(param)
+    /print("Zmienna lokalna w funkcji: ")
+    /print(localVar)
+    /print("Dostęp do zmiennej globalnej: ")
+    /print(globalVar)
+    /int globalVar = 200  # Przesłonięcie zmiennej globalnej
+    /print("Przesłonięta zmienna globalVar w funkcji: ")
+    /print(globalVar)
+} 
