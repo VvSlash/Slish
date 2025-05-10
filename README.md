@@ -1,6 +1,6 @@
 # Projekt Slish Compiler
 
-<p align="center"><img src="slish.png" alt="Slish Banner" width="100%"/>
+<p align="center"><img src="Slish.png" alt="Slish Banner" width="100%"/>
 
 ## O języku Slish
 
