@@ -216,7 +216,25 @@ public class AstPrinter extends BaseNodeVisitor<String> {
         
         return sb.toString();
     }
-    
+
+    @Override
+    public String visit(UnaryOperation unaryOperation) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("UnaryOperation: operator=").append(unaryOperation.getOperator());
+
+        if (unaryOperation.getOperand() != null) {
+            sb.append("\n");
+            indentLevel++;
+            sb.append(getIndent()).append("operand:\n");
+            indentLevel++;
+            sb.append(getIndent()).append(unaryOperation.getOperand().accept(this));
+            indentLevel -= 2;
+        }
+
+        return sb.toString();
+    }
+
+
     @Override
     public String visit(ArrayAccess arrayAccess) {
         StringBuilder sb = new StringBuilder();
