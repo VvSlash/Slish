@@ -65,26 +65,26 @@ public class StringConstantManager {
 
     public String getFormatPointer(Type type) {
         if (type == Type.INTEGER) {
-            return "getelementptr inbounds ([4 x i8], [4 x i8]* @.str_fmt_int, i32 0, i32 0)";
+            return "getelementptr inbounds [4 x i8], [4 x i8]* @.str_fmt_int, i32 0, i32 0";
         }
         if (type == Type.FLOAT) {
-            return "getelementptr inbounds ([4 x i8], [4 x i8]* @.str_fmt_float, i32 0, i32 0)";
+            return "getelementptr inbounds [4 x i8], [4 x i8]* @.str_fmt_float, i32 0, i32 0";
         }
         if (type == Type.STRING) {
-            return "getelementptr inbounds ([4 x i8], [4 x i8]* @.str_fmt_str, i32 0, i32 0)";
+            return "getelementptr inbounds [4 x i8], [4 x i8]* @.str_fmt_str, i32 0, i32 0";
         }
         if (type == Type.BOOLEAN) {
-            return "getelementptr inbounds ([4 x i8], [4 x i8]* @.str_fmt_bool, i32 0, i32 0)";
+            return "getelementptr inbounds [4 x i8], [4 x i8]* @.str_fmt_bool, i32 0, i32 0";
         }
         throw new IllegalArgumentException("Unsupported type: " + type);
     }
 
     public String generateBuiltinFormatStrings() {
         return """
-            @.str_fmt_int = private unnamed_addr constant [4 x i8] c"%d\\0A\\00", align 1
-            @.str_fmt_float = private unnamed_addr constant [4 x i8] c"%f\\0A\\00", align 1
-            @.str_fmt_str = private unnamed_addr constant [4 x i8] c"%s\\0A\\00", align 1
-            @.str_fmt_bool = private unnamed_addr constant [4 x i8] c"%d\\0A\\00", align 1
+            @.str_fmt_int = private unnamed_addr constant [4 x i8] c"%d\\0a\\00", align 1
+            @.str_fmt_float = private unnamed_addr constant [4 x i8] c"%f\\0a\\00", align 1
+            @.str_fmt_str = private unnamed_addr constant [4 x i8] c"%s\\0a\\00", align 1
+            @.str_fmt_bool = private unnamed_addr constant [4 x i8] c"%d\\0a\\00", align 1
             """;
     }
 

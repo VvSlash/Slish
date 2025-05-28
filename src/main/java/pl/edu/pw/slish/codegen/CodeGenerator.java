@@ -62,6 +62,11 @@ public class CodeGenerator implements NodeVisitor<String> {
     private int labelCounter = 0;
     private String currentPipeValueRegister = null; // Nowe pole
     private StringConstantManager stringManager = new StringConstantManager();
+    private final TypeChecker typeChecker;
+
+    public CodeGenerator(TypeChecker typeChecker) {
+        this.typeChecker = typeChecker;
+    }
 
     /**
      * Generuje nowy unikalny rejestr.
@@ -124,6 +129,7 @@ public class CodeGenerator implements NodeVisitor<String> {
 
         // 3) Global string constants
         sb.append(stringManager.generateAllGlobalDeclarations());
+        sb.append(stringManager.generateBuiltinFormatStrings());
         sb.append("\n");
 
         // 4) Begin main function
@@ -1007,20 +1013,34 @@ public class CodeGenerator implements NodeVisitor<String> {
 
     @Override
     public String visit(PrintStatement printStatement) {
-        List<String> argRegisters = new ArrayList<>();
-        for (Expression arg : printStatement.getArguments()) {
-            String argRegister = arg.accept(this);
-            argRegisters.add(argRegister);
-        }
+        for (Expression expr : printStatement.getArguments()) {
+            // Generate the value (register holding the result of the expression)
+            String valueReg = expr.accept(this);
+            Type type = typeChecker.getTypeOf(expr);
 
-        // Handle print arguments - each argument gets its own printf call
-        for (String argRegister : argRegisters) {
-            instructions.add(new PrintInstruction(argRegister));
+            // If it's a boolean, we need to zero-extend it to i32
+            if (type == Type.BOOLEAN) {
+                String extendedReg = generateRegister();
+                instructions.add(new RawInstruction(
+                    "%" + extendedReg + " = zext i1 %" + valueReg + " to i32"
+                ));
+                valueReg = extendedReg;
+                type = Type.INTEGER; // For printf, treat it as an integer now
+            }
+
+            // Get the format string pointer instruction
+            String formatReg = generateRegister();
+            String formatPtrCode = stringManager.getFormatPointer(type);
+            instructions.add(new RawInstruction("%" + formatReg + " = " + formatPtrCode));
+
+            // Add a typed PrintInstruction
+            instructions.add(new PrintInstruction(formatReg, valueReg, type));
         }
 
         currentPipeValueRegister = null;
         return null;
     }
+
 
     @Override
     public String visit(FunctionDeclaration functionDeclaration) {

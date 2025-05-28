@@ -43,6 +43,8 @@ public class TypeChecker implements NodeVisitor<Type> {
     private final Map<String, Type> variables = new HashMap<>();
     private final List<String> errors = new ArrayList<>();
     private final Map<String, FunctionType> functions = new HashMap<>();
+    private final Map<Expression, Type> inferredTypes = new HashMap<>();
+
 
     /**
      * Sprawdza poprawność typów w drzewie AST.
@@ -181,14 +183,19 @@ public class TypeChecker implements NodeVisitor<Type> {
     public Type visit(Literal literal) {
         switch (literal.getType()) {
             case INTEGER:
+                inferredTypes.put(literal, Type.INTEGER);
                 return Type.INTEGER;
             case FLOAT:
+                inferredTypes.put(literal, Type.FLOAT);
                 return Type.FLOAT;
             case STRING:
+                inferredTypes.put(literal, Type.STRING);
                 return Type.STRING;
             case BOOLEAN:
+                inferredTypes.put(literal, Type.BOOLEAN);
                 return Type.BOOLEAN;
             default:
+                inferredTypes.put(literal, Type.DYNAMIC);
                 return Type.DYNAMIC;
         }
     }
@@ -200,6 +207,7 @@ public class TypeChecker implements NodeVisitor<Type> {
             errors.add("Błąd: Niezadeklarowana zmienna: " + name);
             return Type.DYNAMIC;
         }
+        inferredTypes.put(variable, variables.get(name));
         return variables.get(name);
     }
 
@@ -262,11 +270,15 @@ public class TypeChecker implements NodeVisitor<Type> {
                         + ". Oczekiwano liczby, otrzymano: " + rightType);
                 }
                 // wynik FLOAT jeżeli choć jeden FLOAT, inaczej INTEGER
-                return (leftType == Type.FLOAT || rightType == Type.FLOAT)
-                    ? Type.FLOAT
-                    : Type.INTEGER;
+                if (leftType == Type.FLOAT || rightType == Type.FLOAT) {
+                    inferredTypes.put(binaryOperation, Type.FLOAT);
+                    return Type.FLOAT;
+                } else {
+                    inferredTypes.put(binaryOperation, Type.INTEGER);
+                    return Type.INTEGER;
+                }
 
-            // --- Porównania jak dotychczas ---
+                // --- Porównania jak dotychczas ---
             case EQUAL:
             case NOT_EQUAL:
             case GREATER_THAN:
@@ -289,11 +301,13 @@ public class TypeChecker implements NodeVisitor<Type> {
                         + binaryOperation.getOperator()
                         + ". Oczekiwano BOOLEAN, otrzymano: " + rightType);
                 }
+                inferredTypes.put(binaryOperation, Type.BOOLEAN);
                 return Type.BOOLEAN;
 
             // --- Inne (błąd) ---
             default:
                 errors.add("Nieznany operator: " + binaryOperation.getOperator());
+                inferredTypes.put(binaryOperation, Type.DYNAMIC);
                 return Type.DYNAMIC;
         }
     }
@@ -302,6 +316,7 @@ public class TypeChecker implements NodeVisitor<Type> {
     @Override
     public Type visit(StringInterpolation stringInterpolation) {
         // Sprawdzamy poprawność interpolacji - uproszczona wersja
+        inferredTypes.put(stringInterpolation, Type.STRING);
         return Type.STRING;
     }
 
@@ -348,6 +363,8 @@ public class TypeChecker implements NodeVisitor<Type> {
             }
         }
 
+        inferredTypes.put(declaration.getInitializer(), declaredType);
+
         // Typ deklaracji to typ zadeklarowanej zmiennej
         return declaredType;
     }
@@ -367,8 +384,8 @@ public class TypeChecker implements NodeVisitor<Type> {
             ReadExpression readExpr = (ReadExpression) assignment.getValue();
             readExpr.setExpectedType(varType);
         }
-
         Type valueType = assignment.getValue().accept(this);
+        inferredTypes.put(assignment.getValue(), valueType);
 
         // Podobnie jak w deklaracji, sprawdzamy zgodność typów
         if (varType != Type.DYNAMIC && !valueType.canCastTo(varType)) {
@@ -525,6 +542,8 @@ public class TypeChecker implements NodeVisitor<Type> {
             }
         }
 
+        inferredTypes.put(pipeExpression, currentPipeType);
+
         return currentPipeType; // Zwraca typ ostatniego elementu potoku
     }
 
@@ -611,6 +630,7 @@ public class TypeChecker implements NodeVisitor<Type> {
         if (readExpression.getExpectedType() != null) {
             return readExpression.getExpectedType();
         }
+        inferredTypes.put(readExpression, Type.DYNAMIC);
         return Type.DYNAMIC;
     }
 
@@ -621,6 +641,7 @@ public class TypeChecker implements NodeVisitor<Type> {
         // Sprawdzamy, czy tablica została zadeklarowana
         if (!variables.containsKey(arrayName)) {
             errors.add("Błąd: Niezadeklarowana tablica: " + arrayName);
+            inferredTypes.put(arrayAccess, Type.DYNAMIC);
             return Type.DYNAMIC;
         }
 
@@ -638,6 +659,7 @@ public class TypeChecker implements NodeVisitor<Type> {
         }
 
         // Zwracamy typ elementu tablicy
+        inferredTypes.put(arrayAccess, arrayType.getElementType());
         return arrayType.getElementType();
     }
 
@@ -653,6 +675,7 @@ public class TypeChecker implements NodeVisitor<Type> {
     public Type visit(ArrayLiteral arrayLiteral) {
         List<Expression> elements = arrayLiteral.getElements();
         if (elements.isEmpty()) {
+            inferredTypes.put(arrayLiteral, Type.createArrayType(Type.DYNAMIC));
             return Type.createArrayType(Type.DYNAMIC);
         }
 
@@ -670,6 +693,7 @@ public class TypeChecker implements NodeVisitor<Type> {
         }
 
         // Zwracamy typ tablicy na podstawie typu elementów
+        inferredTypes.put(arrayLiteral, Type.createArrayType(baseType));
         return Type.createArrayType(baseType);
     }
 
@@ -785,6 +809,7 @@ public class TypeChecker implements NodeVisitor<Type> {
         if (operandType != Type.BOOLEAN) {
             errors.add("Błąd: Operand operacji negacji musi być bool, otrzymano: " + operandType);
         }
+        inferredTypes.put(unaryOperation, Type.BOOLEAN);
         return Type.BOOLEAN;
     }
 
@@ -826,4 +851,13 @@ public class TypeChecker implements NodeVisitor<Type> {
             return paramTypes;
         }
     }
+
+    public Type getTypeOf(Expression expr) {
+        Type type = inferredTypes.get(expr);
+        if (type == null) {
+            throw new IllegalArgumentException("Type not found for expression: " + expr);
+        }
+        return type;
+    }
+
 } 

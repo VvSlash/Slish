@@ -50,7 +50,7 @@ public class SlishCompiler {
             }
             
             // Generowanie kodu LLVM
-            CodeGenerator codeGenerator = new CodeGenerator();
+            CodeGenerator codeGenerator = new CodeGenerator(typeChecker);
             String llvmCode = codeGenerator.generateCode(ast);
             
             // Zapisywanie kodu LLVM do pliku
