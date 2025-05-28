@@ -1,0 +1,25 @@
+# Operatory logiczne z krótkim spięciem (short-circuit)
+
+/bool a = false
+/bool b = true
+
+# and: jeśli pierwszy operand to false (0), drugi nie powinien być ewaluowany
+/print("Test AND - powinno wypisać tylko pierwszy:")
+/if (a and b) {
+    /print("To nie powinno się wykonać")
+}
+/else {
+    /print("Short-circuit AND działa")
+}
+
+# or: jeśli pierwszy operand to true (1), drugi nie powinien być ewaluowany
+/print("Test OR - powinno wypisać tylko pierwszy:")
+/if (b or a) {
+    /print("Short-circuit OR działa")
+}
+
+# Test logicznego xor - oba operand muszą być ewaluowane
+/print("Test XOR - powinno wypisać oba:")
+/if (a xor b) {
+    /print("XOR działa poprawnie")
+}

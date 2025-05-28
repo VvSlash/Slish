@@ -33,4 +33,6 @@ public interface NodeVisitor<T> {
     T visit(VariableAssignPipeStatement variableAssignPipeStatement);
     T visit(IfPipeStatement ifPipeStatement);
     T visit(ReturnPipeStatement returnPipeStatement);
-} 
+    T visit(UnaryOperation unaryOperation);
+    T visit(PrintStatement printStatement);
+}

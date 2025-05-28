@@ -15,6 +15,7 @@ statement
     | whileLoop
     | forLoop
     | returnStmt
+    | printStmt
     | COMMENT
     ;
 
@@ -94,6 +95,10 @@ returnStmt
     : '/ret' expression?
     ;
 
+printStmt
+    : '/print' '(' argumentList? ')'
+    ;
+
 block
     : '{' statement* '}'
     ;
@@ -103,6 +108,7 @@ expression
     | declaration '(' argumentList? ')'             # FunctionCallExpr
     | '(' expression ')'                            # ParenExpr
     | stringInterpolation                           # StringInterpExpr
+    | 'not' expression                              # NotExpr
     | expression operator expression                # BinaryExpr
     | IDENTIFIER                                    # IdentifierExpr
     | IDENTIFIER '[' expression ']'                 # ArrayAccessExpr
@@ -177,4 +183,4 @@ STRING_START: '"' (~["{}\r\n] | '\\{')* '{';
 STRING_MIDDLE: '}' (~["{}\r\n] | '\\{')* '{';
 STRING_END: '}' (~["{}\r\n] | '\\"')* '"';
 
-IDENTIFIER: [a-zA-Z_][a-zA-Z0-9_]*; 
+IDENTIFIER: [a-zA-Z_][a-zA-Z0-9_]*;

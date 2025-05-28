@@ -130,4 +130,14 @@ public class BaseNodeVisitor<T> implements NodeVisitor<T> {
     public T visit(ReturnPipeStatement returnPipeStatement) {
         return defaultResult;
     }
+
+    @Override
+    public T visit(UnaryOperation unaryOperation) {
+        return defaultResult;
+    }
+
+    @Override
+    public T visit(PrintStatement printStatement) {
+        return defaultResult;
+    }
 } 

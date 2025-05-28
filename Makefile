@@ -57,8 +57,8 @@ $(GEN_DIR):
 ########################################################################
 #  Pobieranie ANTLR-a
 ########################################################################
-$(ANTLR_JAR):
-	$(PS) -Command "Invoke-WebRequest -Uri 'https://www.antlr.org/download/antlr-$(ANTLR_VERSION)-complete.jar' -OutFile '$(ANTLR_JAR)'"
+#$(ANTLR_JAR):
+#	$(PS) -Command "Invoke-WebRequest -Uri 'https://www.antlr.org/download/antlr-$(ANTLR_VERSION)-complete.jar' -OutFile '$(ANTLR_JAR)'"
 
 ########################################################################
 #  Generowanie parsera

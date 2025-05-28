@@ -1,0 +1,7 @@
+# Print test
+
+/print("abcd")
+/print(100)
+/print(3.14)
+/print(true)
+/print(false)
