@@ -1,0 +1,31 @@
+# Bool test
+
+/bool a = true and false
+/print(a)          # Expected: false
+
+/bool b = true or false
+/print(b)          # Expected: true
+
+/bool c = not false
+/print(c)          # Expected: true
+
+/bool d = not true
+/print(d)          # Expected: false
+
+/bool e = true xor false
+/print(e)          # Expected: true
+
+/bool f = true xor true
+/print(f)          # Expected: false
+
+/bool g = false xor false
+/print(g)          # Expected: false
+
+/bool h = not not true
+/print(h)          # Expected: true
+
+/bool i = not not false
+/print(i)          # Expected: false
+
+/bool j = (true and false) or true
+/print(j)          # Expected: true
