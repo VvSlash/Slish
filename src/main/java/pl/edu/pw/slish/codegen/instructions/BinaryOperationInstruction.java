@@ -30,62 +30,64 @@ public class BinaryOperationInstruction implements Instruction {
 
     @Override
     public String generateCode() {
-        String op;
-        boolean isComparison = false;
+        String operandType = mapToLLVMType(resultType);
+        boolean isFloat = resultType == Type.FLOAT;
+        boolean isComparison = isComparisonOp(operation);
 
-        switch (operation) {
-            case ADD:
-                op = "add";
-                break;
-            case SUBTRACT:
-                op = "sub";
-                break;
-            case MULTIPLY:
-                op = "mul";
-                break;
-            case DIVIDE:
-                op = "sdiv";
-                break;
-            case MODULO:
-                op = "srem";
-                break;
-            case XOR:
-                op = "xor";
-                break;
-            case EQUAL:
-                op = "icmp eq";
-                isComparison = true;
-                break;
-            case NOT_EQUAL:
-                op = "icmp ne";
-                isComparison = true;
-                break;
-            case GREATER_THAN:
-                op = "icmp sgt";
-                isComparison = true;
-                break;
-            case LESS_THAN:
-                op = "icmp slt";
-                isComparison = true;
-                break;
-            case GREATER_EQUAL:
-                op = "icmp sge";
-                isComparison = true;
-                break;
-            case LESS_EQUAL:
-                op = "icmp sle";
-                isComparison = true;
-                break;
-            default:
-                throw new IllegalArgumentException("Nieznana operacja: " + operation);
+        String llvmOp;
+
+        if (isComparison) {
+            if (isFloat) {
+                // Floating-point comparisons use 'fcmp' + predicate
+                llvmOp = switch (operation) {
+                    case EQUAL -> "fcmp oeq";
+                    case NOT_EQUAL -> "fcmp one";
+                    case GREATER_THAN -> "fcmp ogt";
+                    case LESS_THAN -> "fcmp olt";
+                    case GREATER_EQUAL -> "fcmp oge";
+                    case LESS_EQUAL -> "fcmp ole";
+                    default -> throw new IllegalArgumentException(
+                        "Unsupported float comparison: " + operation);
+                };
+                operandType = "double"; // explicitly ensure float type
+            } else {
+                // Integer comparisons use 'icmp' + predicate
+                llvmOp = switch (operation) {
+                    case EQUAL -> "icmp eq";
+                    case NOT_EQUAL -> "icmp ne";
+                    case GREATER_THAN -> "icmp sgt";
+                    case LESS_THAN -> "icmp slt";
+                    case GREATER_EQUAL -> "icmp sge";
+                    case LESS_EQUAL -> "icmp sle";
+                    default -> throw new IllegalArgumentException(
+                        "Unsupported int comparison: " + operation);
+                };
+                operandType = "i32"; // explicitly ensure int type
+            }
+        } else if (isFloat) {
+            // Floating-point arithmetic ops
+            llvmOp = switch (operation) {
+                case ADD -> "fadd";
+                case SUBTRACT -> "fsub";
+                case MULTIPLY -> "fmul";
+                case DIVIDE -> "fdiv";
+                default -> throw new IllegalArgumentException("Unsupported float op: " + operation);
+            };
+        } else {
+            // Integer arithmetic and logical ops
+            llvmOp = switch (operation) {
+                case ADD -> "add";
+                case SUBTRACT -> "sub";
+                case MULTIPLY -> "mul";
+                case DIVIDE -> "sdiv";
+                case MODULO -> "srem";
+                case XOR -> "xor";
+                default -> throw new IllegalArgumentException("Unsupported int op: " + operation);
+            };
         }
 
-        String operandType = isComparison
-            ? "i32" // assuming all comparisons are on i32 (adjust if needed)
-            : mapToLLVMType(resultType);
-
         return "%" + resultRegister
-            + " = " + op
+            + " = " + llvmOp
             + " " + operandType
             + " %" + leftRegister
             + ", %" + rightRegister;
@@ -94,24 +96,25 @@ public class BinaryOperationInstruction implements Instruction {
     private String mapToLLVMType(Type type) {
         if (type == Type.INTEGER) {
             return "i32";
-        }
-        if (type == Type.FLOAT) {
+        } else if (type == Type.FLOAT) {
             return "double";
-        }
-        if (type == Type.BOOLEAN) {
+        } else if (type == Type.BOOLEAN) {
             return "i1";
-        }
-        if (type == Type.STRING) {
+        } else if (type == Type.STRING) {
             return "i8*";
-        }
-        if (type == Type.DYNAMIC) {
+        } else if (type == Type.DYNAMIC) {
             return "i8*";
-        }
-        if (type.isArray()) {
+        } else if (type.isArray()) {
             return mapToLLVMType(type.getElementType()) + "*";
         }
         throw new IllegalArgumentException(
             "Unsupported type in BinaryOperationInstruction: " + type);
     }
 
-} 
+    private boolean isComparisonOp(Operation op) {
+        return switch (op) {
+            case EQUAL, NOT_EQUAL, GREATER_THAN, LESS_THAN, GREATER_EQUAL, LESS_EQUAL -> true;
+            default -> false;
+        };
+    }
+}

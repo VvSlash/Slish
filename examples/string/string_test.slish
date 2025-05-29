@@ -1,0 +1,7 @@
+# String test
+
+/string x = "aaa"
+/print(x)
+
+/string y = "test bbb"
+/print(y)

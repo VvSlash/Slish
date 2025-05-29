@@ -1,0 +1,5 @@
+/int j = 0
+/for (j = 0; j < 3; j = /add(j, 1)) {
+    /print("For: ")
+    /print(j)
+}

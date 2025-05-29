@@ -1,0 +1,78 @@
+# Integer - arytmetyka
+# =============================
+
+# dodawanie
+/int a = 5 + 3
+/print(a)
+
+# odejmowanie
+/int b = 10 - 4
+/print(b)
+
+# mnożenie
+/int c = 6 * 5
+/print(c)
+
+# dzielenie
+/int d = 15 // 3
+/print(d)
+
+# kolejność wykonywania - mnożenie
+/int e = 2 + 3 * 4
+/print(e)
+
+# kolejność wykonywania - dzielenie
+/int f = 20 // 4 + 1
+/print(f)
+
+# wiele tych samych operacji - dodawanie
+/int g = 1 + 2 + 3 + 4
+/print(g)
+
+# wiele tych samych operacji - odejmowanie
+/int h = 10 - 3 - 2 - 1
+/print(h)
+
+
+# Float - arytmetyka
+# ===========================
+
+# dodawanie
+/float x = 5.5 + 2.3
+/print(x)
+
+# odejmowanie
+/float y = 10.7 - 3.2
+/print(y)
+
+# mnożenie
+/float z = 4.5 * 2.0
+/print(z)
+
+# dzielenie
+/float w = 15.6 / 3.0
+/print(w)
+
+# kolejność wykonywania - mnożenie
+/float p = 2.5 + 3.0 * 4.0
+/print(p)
+
+# kolejność wykonywania - dzielenie
+/float q = 20.0 / 4.0 + 1.5
+/print(q)
+
+# wiele tych samych operacji - dodawanie
+/float r = 1.1 + 2.2 + 3.3
+/print(r)
+
+# wiele tych samych operacji - odejmowanie
+/float s = 3.5-0.8-1.5
+/print(s)
+
+# wiele tych samych operacji - mnożenie
+/float t = 2.0*3.14*0.5
+/print(t)
+
+# wiele tych samych operacji - dzielenie
+/float u = 3.14 // 2.0 // 0.5
+/print(u)

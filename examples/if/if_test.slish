@@ -1,0 +1,42 @@
+# If test
+
+# if
+/if (true) {
+    /print("Powinno byc wypisane")
+}
+
+/if (false) {
+    /print("Nie powinno byc wypisane")
+}
+
+
+# if else
+/if (false) {
+    /print("Nie powinno byc wypisane")
+}
+/else {
+    /print("Powinno byc wypisane")
+}
+
+
+#if else if else
+/if (false) {
+    /print("Nie powinno byc wypisane")
+}
+/else /if (true) {
+    /print("Powinno byc wypisane")
+}
+/else {
+    /print("Nie powinno byc wypisane")
+}
+
+
+/if (false) {
+    /print("Nie powinno byc wypisane")
+}
+/else /if (false) {
+    /print("Nie powinno byc wypisane")
+}
+/else {
+    /print("Powinno byc wypisane")
+}

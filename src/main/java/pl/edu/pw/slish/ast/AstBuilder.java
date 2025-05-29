@@ -3,6 +3,7 @@ package pl.edu.pw.slish.ast;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import org.antlr.v4.runtime.ParserRuleContext;
 import pl.edu.pw.slish.SlishBaseVisitor;
 import pl.edu.pw.slish.SlishParser;
 import pl.edu.pw.slish.ast.expr.ArrayAccess;
@@ -208,61 +209,122 @@ public class AstBuilder extends SlishBaseVisitor<Node> {
     }
 
     @Override
-    public Node visitBinaryExpr(SlishParser.BinaryExprContext ctx) {
-        Expression left = (Expression) visit(ctx.expression(0));
-        Expression right = (Expression) visit(ctx.expression(1));
-        String operatorText = ctx.operator().getText();
+    public Node visitAddSubExpr(SlishParser.AddSubExprContext ctx) {
+        return buildBinaryOperation(ctx.expression(0), ctx.op.getText(), ctx.expression(1));
+    }
+
+    @Override
+    public Node visitMulDivExpr(SlishParser.MulDivExprContext ctx) {
+        return buildBinaryOperation(ctx.expression(0), ctx.op.getText(), ctx.expression(1));
+    }
+
+    @Override
+    public Node visitRelationalExpr(SlishParser.RelationalExprContext ctx) {
+        return buildBinaryOperation(ctx.expression(0), ctx.op.getText(), ctx.expression(1));
+    }
+
+    @Override
+    public Node visitEqualityExpr(SlishParser.EqualityExprContext ctx) {
+        return buildBinaryOperation(ctx.expression(0), ctx.op.getText(), ctx.expression(1));
+    }
+
+    @Override
+    public Node visitXorExpr(SlishParser.XorExprContext ctx) {
+        return buildBinaryOperation(ctx.expression(0), ctx.op.getText(), ctx.expression(1));
+    }
+
+    @Override
+    public Node visitAndExpr(SlishParser.AndExprContext ctx) {
+        return buildBinaryOperation(ctx.expression(0), ctx.op.getText(), ctx.expression(1));
+    }
+
+    @Override
+    public Node visitOrExpr(SlishParser.OrExprContext ctx) {
+        return buildBinaryOperation(ctx.expression(0), ctx.op.getText(), ctx.expression(1));
+    }
+    private BinaryOperation buildBinaryOperation(ParserRuleContext leftCtx, String opText, ParserRuleContext rightCtx) {
+        Expression left = (Expression) visit(leftCtx);
+        Expression right = (Expression) visit(rightCtx);
 
         BinaryOperation.Operator operator;
-        switch (operatorText) {
-            case "+":
-                operator = BinaryOperation.Operator.ADD;
-                break;
-            case "-":
-                operator = BinaryOperation.Operator.SUBTRACT;
-                break;
-            case "*":
-                operator = BinaryOperation.Operator.MULTIPLY;
-                break;
-            case "//":
-                operator = BinaryOperation.Operator.DIVIDE;
-                break;
-            case "and":
-                operator = BinaryOperation.Operator.AND;
-                break;
-            case "or":
-                operator = BinaryOperation.Operator.OR;
-                break;
-            case "xor":
-                operator = BinaryOperation.Operator.XOR;
-                break;
-            case ">":
-                operator = BinaryOperation.Operator.GREATER_THAN;
-                break;
-            case "<":
-                operator = BinaryOperation.Operator.LESS_THAN;
-                break;
-            case ">=":
-                operator = BinaryOperation.Operator.GREATER_EQUAL;
-                break;
-            case "<=":
-                operator = BinaryOperation.Operator.LESS_EQUAL;
-                break;
-            case "==":
-                operator = BinaryOperation.Operator.EQUAL;
-                break;
-            case "!=":
-                operator = BinaryOperation.Operator.NOT_EQUAL;
-                break;
-            default:
-                throw new RuntimeException("Nieznany operator: " + operatorText);
+        switch (opText) {
+            case "+": operator = BinaryOperation.Operator.ADD; break;
+            case "-": operator = BinaryOperation.Operator.SUBTRACT; break;
+            case "*": operator = BinaryOperation.Operator.MULTIPLY; break;
+            case "//": operator = BinaryOperation.Operator.DIVIDE; break;
+            case "%": operator = BinaryOperation.Operator.MODULO; break;
+            case ">": operator = BinaryOperation.Operator.GREATER_THAN; break;
+            case "<": operator = BinaryOperation.Operator.LESS_THAN; break;
+            case ">=": operator = BinaryOperation.Operator.GREATER_EQUAL; break;
+            case "<=": operator = BinaryOperation.Operator.LESS_EQUAL; break;
+            case "==": operator = BinaryOperation.Operator.EQUAL; break;
+            case "!=": operator = BinaryOperation.Operator.NOT_EQUAL; break;
+            case "and": operator = BinaryOperation.Operator.AND; break;
+            case "or": operator = BinaryOperation.Operator.OR; break;
+            case "xor": operator = BinaryOperation.Operator.XOR; break;
+            default: throw new RuntimeException("Unknown operator: " + opText);
         }
 
         return new BinaryOperation(left, operator, right);
     }
 
+
+//    @Override
+//    public Node visitBinaryExpr(SlishParser.BinaryExprContext ctx) {
+//        Expression left = (Expression) visit(ctx.expression(0));
+//        Expression right = (Expression) visit(ctx.expression(1));
+//        String operatorText = ctx.operator().getText();
+//
+//        BinaryOperation.Operator operator;
+//        switch (operatorText) {
+//            case "+":
+//                operator = BinaryOperation.Operator.ADD;
+//                break;
+//            case "-":
+//                operator = BinaryOperation.Operator.SUBTRACT;
+//                break;
+//            case "*":
+//                operator = BinaryOperation.Operator.MULTIPLY;
+//                break;
+//            case "//":
+//                operator = BinaryOperation.Operator.DIVIDE;
+//                break;
+//            case "and":
+//                operator = BinaryOperation.Operator.AND;
+//                break;
+//            case "or":
+//                operator = BinaryOperation.Operator.OR;
+//                break;
+//            case "xor":
+//                operator = BinaryOperation.Operator.XOR;
+//                break;
+//            case ">":
+//                operator = BinaryOperation.Operator.GREATER_THAN;
+//                break;
+//            case "<":
+//                operator = BinaryOperation.Operator.LESS_THAN;
+//                break;
+//            case ">=":
+//                operator = BinaryOperation.Operator.GREATER_EQUAL;
+//                break;
+//            case "<=":
+//                operator = BinaryOperation.Operator.LESS_EQUAL;
+//                break;
+//            case "==":
+//                operator = BinaryOperation.Operator.EQUAL;
+//                break;
+//            case "!=":
+//                operator = BinaryOperation.Operator.NOT_EQUAL;
+//                break;
+//            default:
+//                throw new RuntimeException("Nieznany operator: " + operatorText);
+//        }
+//
+//        return new BinaryOperation(left, operator, right);
+//    }
+
     @Override
-    public Expression visitNotExpr(SlishParser.NotExprContext ctx) {
+    public Node visitNotExpr(SlishParser.NotExprContext ctx) {
         Expression inner = (Expression) visit(ctx.expression());
         return new UnaryOperation(UnaryOperation.Operator.NEG, inner);
     }
@@ -519,4 +581,4 @@ public class AstBuilder extends SlishBaseVisitor<Node> {
     }
 
 
-} 
+}

@@ -317,14 +317,13 @@ public class CodeGenerator implements NodeVisitor<String> {
             case LESS_THAN -> BinaryOperationInstruction.Operation.LESS_THAN;
             case GREATER_EQUAL -> BinaryOperationInstruction.Operation.GREATER_EQUAL;
             case LESS_EQUAL -> BinaryOperationInstruction.Operation.LESS_EQUAL;
-            default ->
-                throw new IllegalArgumentException("Nieznany operator: " + binOp.getOperator());
+            default -> throw new IllegalArgumentException("Nieznany operator: " + binOp.getOperator());
         };
 
         Type resultType = switch (op) {
             case EQUAL, NOT_EQUAL, GREATER_THAN, LESS_THAN, GREATER_EQUAL, LESS_EQUAL ->
                 Type.BOOLEAN;
-            default -> Type.DYNAMIC;
+            default -> typeChecker.getTypeOf(binOp); // fixed here
         };
 
         instructions.add(new BinaryOperationInstruction(
@@ -708,28 +707,38 @@ public class CodeGenerator implements NodeVisitor<String> {
     public String visit(IfStatement ifStatement) {
         String condRegister = ifStatement.getCondition().accept(this);
 
-        // Generujemy unikalne etykiety dla bloków if-then-else
         String thenLabel = generateLabel("then");
-        String elseLabel = generateLabel("else");
         String endLabel = generateLabel("endif");
 
-        instructions.add(new CommentInstruction("if condition: " + condRegister));
-        instructions.add(new BranchInstruction(condRegister, thenLabel, elseLabel));
-
-        // Blok then
-        instructions.add(new LabelInstruction(thenLabel));
-        ifStatement.getThenBlock().accept(this);
-        instructions.add(new UncondBranchInstruction(endLabel));
-
-        // Blok else
-        instructions.add(new LabelInstruction(elseLabel));
         if (ifStatement.hasElse()) {
+            String elseLabel = generateLabel("else");
+
+            instructions.add(new CommentInstruction("if condition: " + condRegister));
+            instructions.add(new BranchInstruction(condRegister, thenLabel, elseLabel));
+
+            // Blok then
+            instructions.add(new LabelInstruction(thenLabel));
+            ifStatement.getThenBlock().accept(this);
+            instructions.add(new UncondBranchInstruction(endLabel));
+
+            // Blok else
+            instructions.add(new LabelInstruction(elseLabel));
             ifStatement.getElseBlock().accept(this);
+            instructions.add(new UncondBranchInstruction(endLabel));
+        } else {
+            // Tylko if bez else
+            instructions.add(new CommentInstruction("if condition: " + condRegister));
+            instructions.add(new BranchInstruction(condRegister, thenLabel, endLabel));
+
+            // Blok then
+            instructions.add(new LabelInstruction(thenLabel));
+            ifStatement.getThenBlock().accept(this);
+            instructions.add(new UncondBranchInstruction(endLabel));
         }
 
         // Koniec instrukcji if
         instructions.add(new LabelInstruction(endLabel));
-        currentPipeValueRegister = null; // Resetuj po każdej instrukcji najwyższego poziomu
+        currentPipeValueRegister = null;
         return null;
     }
 
@@ -794,11 +803,15 @@ public class CodeGenerator implements NodeVisitor<String> {
             instructions.add(
                 new StoreInstruction(collectionRegister, collectionVar, collectionType));
 
+            instructions.add(new UncondBranchInstruction(initLabel));
+
             instructions.add(new LabelInstruction(initLabel));
             instructions.add(new LoadConstantInstruction(iteratorVar, 0, Type.INTEGER));
 
             instructions.add(new CommentInstruction("get collection size"));
             instructions.add(new CollectionSizeInstruction(sizeVar, collectionVar));
+
+            instructions.add(new UncondBranchInstruction(condLabel));
 
             instructions.add(new LabelInstruction(condLabel));
             String condRegister = generateRegister();
@@ -847,6 +860,8 @@ public class CodeGenerator implements NodeVisitor<String> {
                 forLoop.getBody().accept(this);
             }
 
+            instructions.add(new UncondBranchInstruction(iterLabel));
+
             instructions.add(new LabelInstruction(iterLabel));
             String newIteratorValue = generateRegister();
             instructions.add(new BinaryOperationInstruction(
@@ -859,21 +874,29 @@ public class CodeGenerator implements NodeVisitor<String> {
             instructions.add(new UncondBranchInstruction(condLabel));
         } else {
             instructions.add(new CommentInstruction("for loop initialization"));
+
+            instructions.add(new UncondBranchInstruction(initLabel));
+
             instructions.add(new LabelInstruction(initLabel));
 
+            String loopVarRegister = null; // DODAJ ŚLEDZENIE REJESTRU ZMIENNEJ PĘTLI
+
             if (forLoop.getInitialization() != null) {
-                String initRegister = forLoop.getInitialization().accept(this);
+                loopVarRegister = forLoop.getInitialization().accept(this);
 
                 Node initNode = forLoop.getInitialization();
                 if (initNode instanceof Declaration) {
                     Declaration decl = (Declaration) initNode;
-                    loopManager.registerIterationVariable(decl.getName(), initRegister);
+                    loopManager.registerIterationVariable(decl.getName(), loopVarRegister);
                 } else if (initNode instanceof Assignment) {
                     Assignment assign = (Assignment) initNode;
-                    loopManager.registerIterationVariable(assign.getTarget().getName(),
-                        initRegister);
+                    String varName = assign.getTarget().getName();
+                    loopVarRegister = scopeManager.getVariableRegister(varName);
+                    loopManager.registerIterationVariable(varName, loopVarRegister);
                 }
             }
+
+            instructions.add(new UncondBranchInstruction(condLabel));
 
             instructions.add(new LabelInstruction(condLabel));
             if (forLoop.getCondition() != null) {
@@ -886,15 +909,25 @@ public class CodeGenerator implements NodeVisitor<String> {
             instructions.add(new LabelInstruction(bodyLabel));
             forLoop.getBody().accept(this);
 
+            instructions.add(new UncondBranchInstruction(iterLabel));
+
             instructions.add(new LabelInstruction(iterLabel));
             if (forLoop.getIteration() != null) {
+                // WYKONAJ OPERACJĘ ITERACJI I ZAKTUALIZUJ ZMIENNĄ
                 String iterRegister = forLoop.getIteration().accept(this);
 
                 Node iterNode = forLoop.getIteration();
                 if (iterNode instanceof Assignment) {
                     Assignment assign = (Assignment) iterNode;
-                    loopManager.registerIterationVariable(assign.getTarget().getName(),
-                        iterRegister);
+                    String varName = assign.getTarget().getName();
+                    String varRegister = scopeManager.getVariableRegister(varName);
+
+                    // UPEWNIJ SIĘ, ŻE WARTOŚĆ JEST ZAPISANA DO ZMIENNEJ
+                    Type varType = scopeManager.getVariableType(varName);
+                    if (varType == null) varType = Type.INTEGER;
+                    instructions.add(new StoreInstruction(iterRegister, varRegister, varType));
+
+                    loopManager.registerIterationVariable(varName, varRegister);
                 }
             }
 

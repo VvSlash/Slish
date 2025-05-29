@@ -103,17 +103,24 @@ block
     : '{' statement* '}'
     ;
 
+// Updated expression rules with proper precedence (highest to lowest)
 expression
-    : literal                                       # LiteralExpr
-    | declaration '(' argumentList? ')'             # FunctionCallExpr
-    | '(' expression ')'                            # ParenExpr
-    | stringInterpolation                           # StringInterpExpr
-    | 'not' expression                              # NotExpr
-    | expression operator expression                # BinaryExpr
-    | IDENTIFIER                                    # IdentifierExpr
-    | IDENTIFIER '[' expression ']'                 # ArrayAccessExpr
-    | '/read'                                       # ReadExpr
-    | arrayLiteral                                  # ArrayLiteralExpr
+    : 'not' expression                                          # NotExpr
+    | expression op=('*' | '//' | '%') expression               # MulDivExpr
+    | expression op=('+' | '-') expression                      # AddSubExpr
+    | expression op=('>' | '<' | '>=' | '<=') expression        # RelationalExpr
+    | expression op=('==' | '!=') expression                    # EqualityExpr
+    | expression op='xor' expression                            # XorExpr
+    | expression op='and' expression                            # AndExpr
+    | expression op='or' expression                             # OrExpr
+    | '(' expression ')'                                        # ParenExpr
+    | literal                                                   # LiteralExpr
+    | IDENTIFIER                                                # IdentifierExpr
+    | declaration '(' argumentList? ')'                         # FunctionCallExpr
+    | stringInterpolation                                       # StringInterpExpr
+    | IDENTIFIER '[' expression ']'                             # ArrayAccessExpr
+    | '/read'                                                   # ReadExpr
+    | arrayLiteral                                              # ArrayLiteralExpr
     ;
 
 arrayLiteral
