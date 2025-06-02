@@ -35,8 +35,6 @@ import pl.edu.pw.slish.ast.stmt.WhileLoop;
 import pl.edu.pw.slish.codegen.instructions.AllocaInstruction;
 import pl.edu.pw.slish.codegen.instructions.BinaryOperationInstruction;
 import pl.edu.pw.slish.codegen.instructions.BranchInstruction;
-import pl.edu.pw.slish.codegen.instructions.CollectionElementInstruction;
-import pl.edu.pw.slish.codegen.instructions.CollectionSizeInstruction;
 import pl.edu.pw.slish.codegen.instructions.Instruction;
 import pl.edu.pw.slish.codegen.instructions.LoadConstantInstruction;
 import pl.edu.pw.slish.codegen.instructions.LoadInstruction;
@@ -189,7 +187,11 @@ public class CodeGenerator implements NodeVisitor<String> {
 
         // Loop‐iterator vars are already in a register
         if (loopManager.isIterationVariable(name)) {
-            return loopManager.getIterationVariableRegister(name);
+            String ptr = loopManager.getIterationVariableRegister(name);
+            Type type = scopeManager.getVariableType(name);
+            String value = generateRegister();
+            instructions.add(new LoadInstruction(value, ptr, type));
+            return value; // return loaded value, not pointer
         }
 
         // Look up the pointer register in scope
@@ -317,7 +319,8 @@ public class CodeGenerator implements NodeVisitor<String> {
             case LESS_THAN -> BinaryOperationInstruction.Operation.LESS_THAN;
             case GREATER_EQUAL -> BinaryOperationInstruction.Operation.GREATER_EQUAL;
             case LESS_EQUAL -> BinaryOperationInstruction.Operation.LESS_EQUAL;
-            default -> throw new IllegalArgumentException("Nieznany operator: " + binOp.getOperator());
+            default ->
+                throw new IllegalArgumentException("Nieznany operator: " + binOp.getOperator());
         };
 
         Type resultType = switch (op) {
@@ -744,13 +747,18 @@ public class CodeGenerator implements NodeVisitor<String> {
 
     @Override
     public String visit(WhileLoop whileLoop) {
-        // Generujemy unikalne etykiety dla pętli
         String condLabel = generateLabel("while_cond");
         String bodyLabel = generateLabel("while_body");
         String endLabel = generateLabel("while_end");
 
-        // Rejestrujemy kontekst pętli
-        loopManager.enterLoop("while", condLabel);
+        // Push a new scope for the loop. Variables declared within the loop's body
+        // will belong to this scope.
+        scopeManager.enterScope();
+        loopManager.enterLoop(condLabel, endLabel);
+
+        // CRITICAL FIX: Add an unconditional branch to jump to the loop condition label
+        // from the block where the while loop is initially placed (e.g., 'entry' block).
+        instructions.add(new UncondBranchInstruction(condLabel)); // <--- ADDED THIS LINE
 
         // Etykieta warunku
         instructions.add(new LabelInstruction(condLabel));
@@ -760,180 +768,100 @@ public class CodeGenerator implements NodeVisitor<String> {
         // Ciało pętli
         instructions.add(new LabelInstruction(bodyLabel));
         whileLoop.getBody().accept(this);
-        instructions.add(new UncondBranchInstruction(condLabel));
+        instructions.add(new UncondBranchInstruction(condLabel)); // Branch back to condition
 
         // Koniec pętli
         instructions.add(new LabelInstruction(endLabel));
 
         // Kończymy kontekst pętli
         loopManager.exitLoop();
-        currentPipeValueRegister = null; // Resetuj po każdej instrukcji najwyższego poziomu
+        scopeManager.exitScope();
+        currentPipeValueRegister = null;
         return null;
     }
+
 
     @Override
     public String visit(ForLoop forLoop) {
         String initLabel = generateLabel("for_init");
         String condLabel = generateLabel("for_cond");
         String bodyLabel = generateLabel("for_body");
-        String iterLabel = generateLabel("for_iter");
+        String iterLabel = generateLabel("for_iter"); // Used for standard for loop's iteration step
+        // For foreach, 'continue' might go to its own iter_idx_increment label
         String endLabel = generateLabel("for_end");
 
-        loopManager.enterLoop("for", initLabel);
+        // For 'continue' in foreach, it should ideally jump to the increment of the hidden iterator.
+        // Let's define a specific label for foreach iterator increment.
+        String foreachIterIncLabel = generateLabel("foreach_iter_inc");
 
-        if (forLoop.isForEach()) {
-            instructions.add(new CommentInstruction("foreach loop on collection"));
+        loopManager.enterLoop(iterLabel,
+            endLabel); // 'continue' goes to iteration expression, 'break' to end
 
-            String iteratorVar = generateRegister() + "_iterator";
-            String collectionVar = generateRegister() + "_collection";
-            String sizeVar = generateRegister() + "_size";
+        // --- Standard For Loop Implementation ---
+        instructions.add(new CommentInstruction("Standard for loop"));
 
-            String collectionRegister = forLoop.getCondition().accept(this);
+        // Crucial: Terminate the current block (e.g., 'entry') before starting the loop's init block
+        instructions.add(new UncondBranchInstruction(initLabel));
 
-            Type collectionType = Type.DYNAMIC;
-            if (forLoop.getCondition() instanceof Variable) {
-                Variable var = (Variable) forLoop.getCondition();
-                collectionType = scopeManager.getVariableType(var.getName());
-                if (collectionType != null && !collectionType.isArray()) {
-                    instructions.add(new CommentInstruction(
-                        "Warning: iterating over non-array variable " + var.getName()));
+        // Initialization block
+        instructions.add(new LabelInstruction(initLabel));
+        String loopControlVarPointer = null;
+        if (forLoop.getInitialization() != null) {
+            Node initNode = forLoop.getInitialization();
+            String acceptanceResult = initNode.accept(
+                this); // Execute declaration/assignment. Returns ptr for Decl, valReg for Assign.
+
+            if (initNode instanceof Declaration) {
+                Declaration decl = (Declaration) initNode;
+                loopControlVarPointer = acceptanceResult;
+                loopManager.registerIterationVariable(decl.getName(), loopControlVarPointer);
+            } else if (initNode instanceof Assignment) {
+                Assignment assign = (Assignment) initNode;
+                String varName = assign.getTarget().getName();
+                loopControlVarPointer = scopeManager.getVariableRegister(varName);
+                if (loopControlVarPointer == null) {
+                    throw new IllegalStateException("Variable '" + varName
+                        + "' in for-loop initializer assignment not found in scope.");
                 }
-            }
-
-            instructions.add(
-                new StoreInstruction(collectionRegister, collectionVar, collectionType));
-
-            instructions.add(new UncondBranchInstruction(initLabel));
-
-            instructions.add(new LabelInstruction(initLabel));
-            instructions.add(new LoadConstantInstruction(iteratorVar, 0, Type.INTEGER));
-
-            instructions.add(new CommentInstruction("get collection size"));
-            instructions.add(new CollectionSizeInstruction(sizeVar, collectionVar));
-
-            instructions.add(new UncondBranchInstruction(condLabel));
-
-            instructions.add(new LabelInstruction(condLabel));
-            String condRegister = generateRegister();
-            instructions.add(new BinaryOperationInstruction(
-                condRegister, iteratorVar, sizeVar,
-                BinaryOperationInstruction.Operation.LESS_THAN,
-                Type.BOOLEAN
-            ));
-            instructions.add(new BranchInstruction(condRegister, bodyLabel, endLabel));
-
-            instructions.add(new LabelInstruction(bodyLabel));
-            String currentElementVar = generateRegister() + "_element";
-            instructions.add(new CommentInstruction("get current element from collection"));
-
-            Type elementType = Type.DYNAMIC;
-            if (collectionType != null && collectionType.isArray()) {
-                elementType = collectionType.getElementType();
-                instructions.add(new CommentInstruction("element type: " + elementType));
-            }
-
-            instructions.add(
-                new CollectionElementInstruction(currentElementVar, collectionVar, iteratorVar,
-                    elementType));
-
-            if (!forLoop.getBody().getStatements().isEmpty() &&
-                forLoop.getBody().getStatements().get(0) instanceof Declaration) {
-
-                Declaration iterVarDecl = (Declaration) forLoop.getBody().getStatements().get(0);
-                Type iterVarType = Type.DYNAMIC;
-                try {
-                    iterVarType = Type.fromTypeName(iterVarDecl.getType());
-                } catch (IllegalArgumentException e) {
-                    instructions.add(new CommentInstruction(
-                        "Warning: unknown type for iteration variable, using dynamic type"));
-                }
-
-                String iterVarRegister = scopeManager.getVariableRegister(iterVarDecl.getName());
-                instructions.add(
-                    new StoreInstruction(currentElementVar, iterVarRegister, iterVarType));
-                loopManager.registerIterationVariable(iterVarDecl.getName(), currentElementVar);
-
-                for (int i = 1; i < forLoop.getBody().getStatements().size(); i++) {
-                    forLoop.getBody().getStatements().get(i).accept(this);
-                }
+                loopManager.registerIterationVariable(varName, loopControlVarPointer);
             } else {
-                forLoop.getBody().accept(this);
+                instructions.add(new CommentInstruction(
+                    "For-loop initialization is an expression; loop control variable pointer not set from init."));
             }
-
-            instructions.add(new UncondBranchInstruction(iterLabel));
-
-            instructions.add(new LabelInstruction(iterLabel));
-            String newIteratorValue = generateRegister();
-            instructions.add(new BinaryOperationInstruction(
-                newIteratorValue, iteratorVar, "1",
-                BinaryOperationInstruction.Operation.ADD,
-                Type.INTEGER
-            ));
-            instructions.add(new StoreInstruction(newIteratorValue, iteratorVar, Type.INTEGER));
-
-            instructions.add(new UncondBranchInstruction(condLabel));
         } else {
-            instructions.add(new CommentInstruction("for loop initialization"));
+            instructions.add(
+                new CommentInstruction("No initialization expression for standard for-loop."));
+        }
+        instructions.add(new UncondBranchInstruction(condLabel));
 
-            instructions.add(new UncondBranchInstruction(initLabel));
-
-            instructions.add(new LabelInstruction(initLabel));
-
-            String loopVarRegister = null; // DODAJ ŚLEDZENIE REJESTRU ZMIENNEJ PĘTLI
-
-            if (forLoop.getInitialization() != null) {
-                loopVarRegister = forLoop.getInitialization().accept(this);
-
-                Node initNode = forLoop.getInitialization();
-                if (initNode instanceof Declaration) {
-                    Declaration decl = (Declaration) initNode;
-                    loopManager.registerIterationVariable(decl.getName(), loopVarRegister);
-                } else if (initNode instanceof Assignment) {
-                    Assignment assign = (Assignment) initNode;
-                    String varName = assign.getTarget().getName();
-                    loopVarRegister = scopeManager.getVariableRegister(varName);
-                    loopManager.registerIterationVariable(varName, loopVarRegister);
-                }
-            }
-
-            instructions.add(new UncondBranchInstruction(condLabel));
-
-            instructions.add(new LabelInstruction(condLabel));
-            if (forLoop.getCondition() != null) {
-                String condRegister = forLoop.getCondition().accept(this);
-                instructions.add(new BranchInstruction(condRegister, bodyLabel, endLabel));
-            } else {
-                instructions.add(new UncondBranchInstruction(bodyLabel));
-            }
-
-            instructions.add(new LabelInstruction(bodyLabel));
-            forLoop.getBody().accept(this);
-
-            instructions.add(new UncondBranchInstruction(iterLabel));
-
-            instructions.add(new LabelInstruction(iterLabel));
-            if (forLoop.getIteration() != null) {
-                // WYKONAJ OPERACJĘ ITERACJI I ZAKTUALIZUJ ZMIENNĄ
-                String iterRegister = forLoop.getIteration().accept(this);
-
-                Node iterNode = forLoop.getIteration();
-                if (iterNode instanceof Assignment) {
-                    Assignment assign = (Assignment) iterNode;
-                    String varName = assign.getTarget().getName();
-                    String varRegister = scopeManager.getVariableRegister(varName);
-
-                    // UPEWNIJ SIĘ, ŻE WARTOŚĆ JEST ZAPISANA DO ZMIENNEJ
-                    Type varType = scopeManager.getVariableType(varName);
-                    if (varType == null) varType = Type.INTEGER;
-                    instructions.add(new StoreInstruction(iterRegister, varRegister, varType));
-
-                    loopManager.registerIterationVariable(varName, varRegister);
-                }
-            }
-
-            instructions.add(new UncondBranchInstruction(condLabel));
+        // Condition block
+        instructions.add(new LabelInstruction(condLabel));
+        if (forLoop.getCondition() != null && !forLoop.getCondition().toString().trim().isEmpty()) {
+            String conditionResultRegister = forLoop.getCondition().accept(this);
+            instructions.add(new BranchInstruction(conditionResultRegister, bodyLabel, endLabel));
+        } else {
+            instructions.add(new CommentInstruction(
+                "No condition expression for standard for-loop (infinite loop)."));
+            instructions.add(new UncondBranchInstruction(bodyLabel));
         }
 
+        // Body block
+        instructions.add(new LabelInstruction(bodyLabel));
+        forLoop.getBody().accept(this);
+        instructions.add(new UncondBranchInstruction(iterLabel));
+
+        // Iteration block
+        instructions.add(new LabelInstruction(iterLabel));
+        if (forLoop.getIteration() != null) { // <--- THIS IS THE CRITICAL LINE
+            forLoop.getIteration()
+                .accept(this); // Execute iteration expression (e.g., i++, assignment)
+        } else {
+            instructions.add(
+                new CommentInstruction("No iteration expression for standard for-loop."));
+        }
+        instructions.add(new UncondBranchInstruction(condLabel));
+
+        // End block
         instructions.add(new LabelInstruction(endLabel));
         loopManager.exitLoop();
         currentPipeValueRegister = null;

@@ -7,7 +7,7 @@ import pl.edu.pw.slish.ast.expr.Variable;
 /**
  * Reprezentuje przypisanie wartości do zmiennej w AST
  */
-public class Assignment implements Statement {
+public class Assignment implements Statement, Expression {
     private final Variable target;
     private final Expression value;
     
