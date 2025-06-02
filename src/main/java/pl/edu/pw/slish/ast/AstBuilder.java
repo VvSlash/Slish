@@ -242,32 +242,62 @@ public class AstBuilder extends SlishBaseVisitor<Node> {
     public Node visitOrExpr(SlishParser.OrExprContext ctx) {
         return buildBinaryOperation(ctx.expression(0), ctx.op.getText(), ctx.expression(1));
     }
-    private BinaryOperation buildBinaryOperation(ParserRuleContext leftCtx, String opText, ParserRuleContext rightCtx) {
+
+    private BinaryOperation buildBinaryOperation(ParserRuleContext leftCtx, String opText,
+        ParserRuleContext rightCtx) {
         Expression left = (Expression) visit(leftCtx);
         Expression right = (Expression) visit(rightCtx);
 
         BinaryOperation.Operator operator;
         switch (opText) {
-            case "+": operator = BinaryOperation.Operator.ADD; break;
-            case "-": operator = BinaryOperation.Operator.SUBTRACT; break;
-            case "*": operator = BinaryOperation.Operator.MULTIPLY; break;
-            case "//": operator = BinaryOperation.Operator.DIVIDE; break;
-            case "%": operator = BinaryOperation.Operator.MODULO; break;
-            case ">": operator = BinaryOperation.Operator.GREATER_THAN; break;
-            case "<": operator = BinaryOperation.Operator.LESS_THAN; break;
-            case ">=": operator = BinaryOperation.Operator.GREATER_EQUAL; break;
-            case "<=": operator = BinaryOperation.Operator.LESS_EQUAL; break;
-            case "==": operator = BinaryOperation.Operator.EQUAL; break;
-            case "!=": operator = BinaryOperation.Operator.NOT_EQUAL; break;
-            case "and": operator = BinaryOperation.Operator.AND; break;
-            case "or": operator = BinaryOperation.Operator.OR; break;
-            case "xor": operator = BinaryOperation.Operator.XOR; break;
-            default: throw new RuntimeException("Unknown operator: " + opText);
+            case "+":
+                operator = BinaryOperation.Operator.ADD;
+                break;
+            case "-":
+                operator = BinaryOperation.Operator.SUBTRACT;
+                break;
+            case "*":
+                operator = BinaryOperation.Operator.MULTIPLY;
+                break;
+            case "//":
+                operator = BinaryOperation.Operator.DIVIDE;
+                break;
+            case "%":
+                operator = BinaryOperation.Operator.MODULO;
+                break;
+            case ">":
+                operator = BinaryOperation.Operator.GREATER_THAN;
+                break;
+            case "<":
+                operator = BinaryOperation.Operator.LESS_THAN;
+                break;
+            case ">=":
+                operator = BinaryOperation.Operator.GREATER_EQUAL;
+                break;
+            case "<=":
+                operator = BinaryOperation.Operator.LESS_EQUAL;
+                break;
+            case "==":
+                operator = BinaryOperation.Operator.EQUAL;
+                break;
+            case "!=":
+                operator = BinaryOperation.Operator.NOT_EQUAL;
+                break;
+            case "and":
+                operator = BinaryOperation.Operator.AND;
+                break;
+            case "or":
+                operator = BinaryOperation.Operator.OR;
+                break;
+            case "xor":
+                operator = BinaryOperation.Operator.XOR;
+                break;
+            default:
+                throw new RuntimeException("Unknown operator: " + opText);
         }
 
         return new BinaryOperation(left, operator, right);
     }
-
 
 //    @Override
 //    public Node visitBinaryExpr(SlishParser.BinaryExprContext ctx) {
@@ -441,34 +471,48 @@ public class AstBuilder extends SlishBaseVisitor<Node> {
 
     @Override
     public Node visitForLoop(SlishParser.ForLoopContext ctx) {
-        // Obsługa standardowej pętli for
-        if (ctx.getChildCount() > 5) { // for (init; condition; iteration) block
+        if (ctx.getChildCount()
+            > 5) {
             Node initialization = null;
             Expression condition = null;
             Expression iteration = null;
 
-            // Inicjalizacja (opcjonalna)
             if (ctx.declaration() != null) {
                 initialization = visit(ctx.declaration());
-            } else if (ctx.assignment(0) != null) {
+            } else if (!ctx.assignment().isEmpty()) {
                 initialization = visit(ctx.assignment(0));
             }
 
-            // Warunek (opcjonalny)
-            if (ctx.expression(0) != null) {
+            if (!ctx.expression().isEmpty()) {
                 condition = (Expression) visit(ctx.expression(0));
             }
 
-            // Iteracja (opcjonalna)
-            if (ctx.expression().size() > 1) {
-                iteration = (Expression) visit(ctx.expression(1));
+            int semicolonCount = 0;
+            int iterNodeIndex = -1;
+            for (int i = 0; i < ctx.getChildCount(); i++) {
+                if (ctx.getChild(i).getText().equals(";")) {
+                    semicolonCount++;
+                    if (semicolonCount == 2) {
+                        if (i + 1 < ctx.getChildCount()) {
+                            iterNodeIndex = i + 1;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (iterNodeIndex != -1) {
+                org.antlr.v4.runtime.tree.ParseTree iterParseTree = ctx.getChild(iterNodeIndex);
+                if (iterParseTree instanceof SlishParser.ExpressionContext) {
+                    iteration = (Expression) visit(iterParseTree);
+                } else if (iterParseTree instanceof SlishParser.AssignmentContext) {
+                    iteration = (Expression) visit(iterParseTree);
+                }
             }
 
             Block body = (Block) visit(ctx.block());
             return new ForLoop(initialization, condition, iteration, body);
-        }
-        // Obsługa pętli foreach
-        else {
+        } else {
             Expression collection = (Expression) visit(ctx.expression(0));
             Block body = (Block) visit(ctx.block());
             return new ForLoop(collection, body);

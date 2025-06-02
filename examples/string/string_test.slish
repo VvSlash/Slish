@@ -1,7 +1,4 @@
 # String test
 
-/string x = "aaa"
+/string x = "x"
 /print(x)
-
-/string y = "test bbb"
-/print(y)
