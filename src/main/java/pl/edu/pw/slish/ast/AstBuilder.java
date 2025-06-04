@@ -13,6 +13,7 @@ import pl.edu.pw.slish.ast.expr.Expression;
 import pl.edu.pw.slish.ast.expr.ExpressionAsPipeElement;
 import pl.edu.pw.slish.ast.expr.FunctionCall;
 import pl.edu.pw.slish.ast.expr.Literal;
+import pl.edu.pw.slish.ast.expr.Literal.Type;
 import pl.edu.pw.slish.ast.expr.PipeExpression;
 import pl.edu.pw.slish.ast.expr.ReadExpression;
 import pl.edu.pw.slish.ast.expr.StringInterpolation;
@@ -524,20 +525,25 @@ public class AstBuilder extends SlishBaseVisitor<Node> {
     public Node visitLiteral(SlishParser.LiteralContext ctx) {
         if (ctx.INTEGER() != null) {
             int value = Integer.parseInt(ctx.INTEGER().getText());
-            return new Literal(value, Literal.Type.INTEGER);
-        } else if (ctx.FLOAT() != null) {
-            float value = Float.parseFloat(ctx.FLOAT().getText());
-            return new Literal(value, Literal.Type.FLOAT);
+            return new Literal(value, Type.INTEGER); // Assuming Literal.Type maps to your codegen.Type
+        } else if (ctx.FLOAT32_LITERAL() != null) { // NEW: Handle float32 literals (e.g., 0.0f0)
+            String text = ctx.FLOAT32_LITERAL().getText();
+            // Remove the 'f0' suffix before parsing
+            String numericPart = text.substring(0, text.length() - 2); // Remove last two chars ('f0')
+            float value = Float.parseFloat(numericPart); // Parse as float for Float32
+            return new Literal(value, Type.FLOAT32); // Use your Type.FLOAT32
+        } else if (ctx.FLOAT64_LITERAL() != null) { // NEW: Handle float64 literals (e.g., 0.0)
+            double value = Double.parseDouble(ctx.FLOAT64_LITERAL().getText()); // Parse as double for Float64
+            return new Literal(value, Type.FLOAT64); // Use your Type.FLOAT64
         } else if (ctx.STRING() != null) {
             String text = ctx.STRING().getText();
-            // Usunięcie cudzysłowów z początku i końca
             String value = text.substring(1, text.length() - 1);
-            return new Literal(value, Literal.Type.STRING);
+            return new Literal(value, Type.STRING);
         } else if (ctx.BOOL() != null) {
             boolean value = Boolean.parseBoolean(ctx.BOOL().getText());
-            return new Literal(value, Literal.Type.BOOLEAN);
+            return new Literal(value, Type.BOOLEAN);
         } else if (ctx.getText().equals("null")) {
-            return new Literal(null, Literal.Type.NULL);
+            return new Literal(null, Type.NULL); // Or your specific NULL type if distinct
         }
         return null;
     }

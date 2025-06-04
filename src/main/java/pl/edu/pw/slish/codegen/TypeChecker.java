@@ -186,9 +186,15 @@ public class TypeChecker implements NodeVisitor<Type> {
             case INTEGER:
                 inferredTypes.put(literal, Type.INTEGER);
                 return Type.INTEGER;
-            case FLOAT:
-                inferredTypes.put(literal, Type.FLOAT);
-                return Type.FLOAT;
+            case FLOAT32: // NEW
+                inferredTypes.put(literal, Type.FLOAT32);
+                return Type.FLOAT32;
+            case FLOAT64: // NEW
+                inferredTypes.put(literal, Type.FLOAT64);
+                return Type.FLOAT64;
+            // case FLOAT: // OLD - Remove
+            //     inferredTypes.put(literal, Type.FLOAT64); // Default old FLOAT literal to FLOAT64
+            //     return Type.FLOAT64;
             case STRING:
                 inferredTypes.put(literal, Type.STRING);
                 return Type.STRING;
@@ -252,65 +258,100 @@ public class TypeChecker implements NodeVisitor<Type> {
     public Type visit(BinaryOperation binaryOperation) {
         Type leftType = binaryOperation.getLeft().accept(this);
         Type rightType = binaryOperation.getRight().accept(this);
+        Type resultType = Type.DYNAMIC; // Default
 
         switch (binaryOperation.getOperator()) {
-            // --- Arytmetyka jak dotychczas ---
             case ADD:
             case SUBTRACT:
             case MULTIPLY:
             case DIVIDE:
-            case MODULO:
-                if (leftType != Type.INTEGER && leftType != Type.FLOAT) {
-                    errors.add("Błąd: Niewłaściwy typ lewego operandu operacji "
-                        + binaryOperation.getOperator()
-                        + ". Oczekiwano liczby, otrzymano: " + leftType);
-                }
-                if (rightType != Type.INTEGER && rightType != Type.FLOAT) {
-                    errors.add("Błąd: Niewłaściwy typ prawego operandu operacji "
-                        + binaryOperation.getOperator()
-                        + ". Oczekiwano liczby, otrzymano: " + rightType);
-                }
-                // wynik FLOAT jeżeli choć jeden FLOAT, inaczej INTEGER
-                if (leftType == Type.FLOAT || rightType == Type.FLOAT) {
-                    inferredTypes.put(binaryOperation, Type.FLOAT);
-                    return Type.FLOAT;
+                // Type promotion: int/float32 + float64 -> float64
+                // int + float32 -> float32
+                // int + int -> int
+                if (leftType == Type.FLOAT64 || rightType == Type.FLOAT64) {
+                    resultType = Type.FLOAT64;
+                } else if (leftType == Type.FLOAT32 || rightType == Type.FLOAT32) {
+                    resultType = Type.FLOAT32;
+                } else if (leftType == Type.INTEGER && rightType == Type.INTEGER) {
+                    resultType = Type.INTEGER;
                 } else {
-                    inferredTypes.put(binaryOperation, Type.INTEGER);
-                    return Type.INTEGER;
+                    // If one is numeric and other is not (excluding dynamic)
+                    boolean leftIsNumeric = (leftType == Type.INTEGER || leftType == Type.FLOAT32 || leftType == Type.FLOAT64);
+                    boolean rightIsNumeric = (rightType == Type.INTEGER || rightType == Type.FLOAT32 || rightType == Type.FLOAT64);
+                    if (leftIsNumeric && rightIsNumeric) { // Should have been caught by above
+                        errors.add("Błąd: Mieszane typy numeryczne bez jasnej promocji: " + leftType + " i " + rightType);
+                    } else if (leftType != Type.DYNAMIC && rightType != Type.DYNAMIC) {
+                        errors.add("Błąd: Operandy arytmetyczne muszą być numeryczne. Otrzymano: " + leftType + " i " + rightType);
+                    }
+                    // If dynamic is involved, result remains dynamic unless promotion is clear
+                    if (leftType == Type.DYNAMIC || rightType == Type.DYNAMIC) resultType = Type.DYNAMIC;
                 }
+                // Check if operands are numeric or dynamic
+                if (!((leftType == Type.INTEGER || leftType == Type.FLOAT32 || leftType == Type.FLOAT64 || leftType == Type.DYNAMIC) &&
+                    (rightType == Type.INTEGER || rightType == Type.FLOAT32 || rightType == Type.FLOAT64 || rightType == Type.DYNAMIC))) {
+                    if (leftType != Type.DYNAMIC && rightType != Type.DYNAMIC) { // Avoid error if one is dynamic
+                        errors.add("Błąd: Operandy operacji " + binaryOperation.getOperator() +
+                            " muszą być typu numerycznego. Otrzymano: " + leftType + " i " + rightType);
+                    }
+                }
+                break;
 
-                // --- Porównania jak dotychczas ---
+            case MODULO:
+                if (!((leftType == Type.INTEGER || leftType == Type.DYNAMIC) &&
+                    (rightType == Type.INTEGER || rightType == Type.DYNAMIC))) {
+                    if (leftType != Type.DYNAMIC && rightType != Type.DYNAMIC) {
+                        errors.add("Błąd: Operandy modulo muszą być całkowite. Otrzymano: " + leftType + " i " + rightType);
+                    }
+                }
+                resultType = (leftType == Type.INTEGER && rightType == Type.INTEGER) ? Type.INTEGER : Type.DYNAMIC;
+                break;
+
             case EQUAL:
             case NOT_EQUAL:
             case GREATER_THAN:
             case LESS_THAN:
             case GREATER_EQUAL:
             case LESS_EQUAL:
-                return Type.BOOLEAN;
+                // Allow comparisons between any numeric types or dynamic
+                boolean leftIsComparable = (leftType == Type.INTEGER || leftType == Type.FLOAT32 || leftType == Type.FLOAT64 || leftType == Type.BOOLEAN || leftType == Type.STRING || leftType == Type.DYNAMIC);
+                boolean rightIsComparable = (rightType == Type.INTEGER || rightType == Type.FLOAT32 || rightType == Type.FLOAT64 || rightType == Type.BOOLEAN || rightType == Type.STRING || rightType == Type.DYNAMIC);
 
-            // --- Logiczne operatory: AND, OR, XOR ---
+                if (!(leftIsComparable && rightIsComparable)) {
+                    errors.add("Błąd: Nie można porównać typów: " + leftType + " i " + rightType);
+                }
+                // Additionally, ensure they are somewhat compatible for comparison if not dynamic
+                if (leftType != Type.DYNAMIC && rightType != Type.DYNAMIC) {
+                    boolean numericComparison = (leftType == Type.INTEGER || leftType == Type.FLOAT32 || leftType == Type.FLOAT64) &&
+                        (rightType == Type.INTEGER || rightType == Type.FLOAT32 || rightType == Type.FLOAT64);
+                    boolean stringComparison = (leftType == Type.STRING && rightType == Type.STRING);
+                    boolean booleanComparison = (leftType == Type.BOOLEAN && rightType == Type.BOOLEAN);
+
+                    if (!(numericComparison || stringComparison || booleanComparison)) {
+                        errors.add("Błąd: Niezgodne typy w porównaniu: " + leftType + " i " + rightType);
+                    }
+                }
+                resultType = Type.BOOLEAN;
+                break;
+
             case AND:
             case OR:
             case XOR:
-                if (leftType != Type.BOOLEAN) {
-                    errors.add("Błąd: Niewłaściwy typ lewego operandu operacji logicznej "
-                        + binaryOperation.getOperator()
-                        + ". Oczekiwano BOOLEAN, otrzymano: " + leftType);
+                if (!((leftType == Type.BOOLEAN || leftType == Type.DYNAMIC) &&
+                    (rightType == Type.BOOLEAN || rightType == Type.DYNAMIC))) {
+                    if (leftType != Type.DYNAMIC && rightType != Type.DYNAMIC) {
+                        errors.add("Błąd: Operandy logiczne muszą być typu boolean. Otrzymano: " + leftType + " i " + rightType);
+                    }
                 }
-                if (rightType != Type.BOOLEAN) {
-                    errors.add("Błąd: Niewłaściwy typ prawego operandu operacji logicznej "
-                        + binaryOperation.getOperator()
-                        + ". Oczekiwano BOOLEAN, otrzymano: " + rightType);
-                }
-                inferredTypes.put(binaryOperation, Type.BOOLEAN);
-                return Type.BOOLEAN;
+                resultType = (leftType == Type.BOOLEAN && rightType == Type.BOOLEAN) ? Type.BOOLEAN : Type.DYNAMIC;
+                break;
 
-            // --- Inne (błąd) ---
             default:
                 errors.add("Nieznany operator: " + binaryOperation.getOperator());
-                inferredTypes.put(binaryOperation, Type.DYNAMIC);
-                return Type.DYNAMIC;
+                resultType = Type.DYNAMIC;
+                break;
         }
+        inferredTypes.put(binaryOperation, resultType);
+        return resultType;
     }
 
 
@@ -327,48 +368,47 @@ public class TypeChecker implements NodeVisitor<Type> {
         try {
             declaredType = Type.fromTypeName(declaration.getType());
         } catch (IllegalArgumentException e) {
-            errors.add("Błąd: Nieznany typ: " + declaration.getType());
+            errors.add("Błąd: Nieznany typ: " + declaration.getType() + " dla zmiennej " + declaration.getName());
             declaredType = Type.DYNAMIC;
         }
 
+        variables.put(declaration.getName(), declaredType); // Declare variable first
+
         if (declaration.getInitializer() != null) {
-            // Jeśli inicjalizator to ReadExpression, ustawiamy dla niego oczekiwany typ
             if (declaration.getInitializer() instanceof ReadExpression) {
                 ReadExpression readExpr = (ReadExpression) declaration.getInitializer();
-                readExpr.setExpectedType(declaredType);
+                readExpr.setExpectedType(declaredType); // Pass context to ReadExpression
             }
 
             Type initType = declaration.getInitializer().accept(this);
+            inferredTypes.put(declaration.getInitializer(), initType); // Store inferred type of initializer
 
-            // Obsługa tablic - jeśli zarówno declaredType jak i initType są tablicami
+
             if (declaredType.isArray() && initType.isArray()) {
-                // Sprawdzamy zgodność typów elementów
                 Type declaredElementType = declaredType.getElementType();
                 Type initElementType = initType.getElementType();
-
-                if (!initElementType.canCastTo(declaredElementType)) {
-                    errors.add("Błąd: Niezgodność typów elementów tablicy w deklaracji "
-                        + declaration.getName() +
-                        ". Oczekiwano: " + declaredElementType + "[], otrzymano: " + initElementType
-                        + "[]");
+                if (declaredElementType != null && initElementType != null && !initElementType.canCastTo(declaredElementType)) {
+                    errors.add("Błąd: Niezgodność typów elementów tablicy w deklaracji " + declaration.getName() +
+                        ". Oczekiwano: " + declaredElementType + "[], otrzymano: " + initElementType + "[]");
                 }
-
-                // Typy są zgodne lub jeden z nich jest dynamiczny
-                return declaredType;
-            }
-
-            // Standardowa kontrola typów dla innych przypadków
-            if (declaredType != Type.DYNAMIC && !initType.canCastTo(declaredType)) {
+            } else if (declaredType != Type.DYNAMIC && !initType.canCastTo(declaredType)) {
                 errors.add("Błąd: Niezgodność typów w deklaracji " + declaration.getName() +
                     ". Oczekiwano: " + declaredType + ", otrzymano: " + initType);
             }
+            // If declaredType is DYNAMIC, it takes the initType
+            if (declaredType == Type.DYNAMIC && initType != Type.DYNAMIC) {
+                variables.put(declaration.getName(), initType); // Update variable type if inferred
+                // Return the inferred type for the declaration statement itself if it was dynamic
+                // This is a bit unconventional, visit(Declaration) usually returns VOID or the declared type
+                // For simplicity, we'll stick to returning the explicitly declared type or dynamic.
+            }
         }
-
-        inferredTypes.put(declaration.getInitializer(), declaredType);
-
-        // Typ deklaracji to typ zadeklarowanej zmiennej
-        return declaredType;
+        // The "type" of a declaration statement itself is usually void,
+        // or the type of the variable declared if it were an expression.
+        // For type checking, its side effect (declaring a variable) is most important.
+        return declaredType; // Return the (potentially updated) declared type
     }
+
 
     @Override
     public Type visit(Assignment node) {
@@ -892,5 +932,19 @@ public class TypeChecker implements NodeVisitor<Type> {
         }
         return type;
     }
+    public Type getFunctionReturnType(String functionName) {
+        FunctionType ft = functions.get(functionName); // 'functions' is your Map<String, FunctionType>
+        if (ft != null) {
+            return ft.getReturnType();
+        }
+        // This situation should ideally be an error caught during the type checking phase
+        // if a function is called without being declared or registered as a built-in.
+        // Returning DYNAMIC here is a fallback for codegen if type checking was lenient
+        // or for built-ins not explicitly in the 'functions' map but handled by codegen.
+        System.err.println("TypeChecker: Return type for function '" + functionName + "' not found in registered functions. Defaulting to DYNAMIC.");
+        return Type.DYNAMIC;
+    }
+
+
 
 } 

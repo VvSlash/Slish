@@ -143,7 +143,8 @@ interpolationPart
 
 type
     : 'int'                                       # IntType
-    | 'float'                                     # FloatType
+    | 'float32'                                   # Float32Type
+    | 'float64'                                   # Float64Type
     | 'string'                                    # StringType
     | 'bool'                                      # BoolType
     | 'void'                                      # VoidType
@@ -151,6 +152,7 @@ type
     | type '[' ']'                                # ArrayType
     | IDENTIFIER                                  # CustomType
     ;
+
 
 operator
     : '+'
@@ -170,7 +172,8 @@ operator
 
 literal
     : INTEGER
-    | FLOAT
+    | FLOAT32_LITERAL // NEW: For float32 literals like 0.0f0
+    | FLOAT64_LITERAL // NEW: For float64 literals like 0.0
     | STRING
     | BOOL
     | 'null'
@@ -183,7 +186,14 @@ COMMENT: '#' ~[\r\n]* -> skip;
 WS: [ \t\r\n]+ -> skip;
 
 INTEGER: [0-9]+;
-FLOAT: [0-9]+ '.' [0-9]+;
+
+// NEW: Lexer rule for 32-bit floating-point literals with 'f0' suffix
+// This rule should be placed before FLOAT64_LITERAL to ensure it takes precedence
+FLOAT32_LITERAL: [0-9]+ '.' [0-9]+ ('f'|'F') '0';
+
+// NEW: Lexer rule for 64-bit floating-point literals (standard float format)
+FLOAT64_LITERAL: [0-9]+ '.' [0-9]+;
+
 BOOL: 'true' | 'false';
 STRING: '"' (~["{}\r\n] | '\\"')* '"';
 STRING_WITH_INTERPOLATION: '"' (~["{}\r\n] | '\\{' | '\\}' | '{' ~[}]* '}')* '"';

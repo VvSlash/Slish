@@ -95,7 +95,7 @@ public class BaseNodeVisitor<T> implements NodeVisitor<T> {
     public T visit(ReturnStatement returnStatement) {
         return defaultResult;
     }
-    
+
     @Override
     public T visit(FunctionDeclaration functionDeclaration) {
         return defaultResult;

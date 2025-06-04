@@ -31,7 +31,10 @@ public class PrintInstruction implements Instruction {
         if (type == Type.INTEGER) {
             return "i32";
         }
-        if (type == Type.FLOAT) {
+        if (type == Type.FLOAT32) { // Handle FLOAT32
+            return "float";
+        }
+        if (type == Type.FLOAT64) { // Handle FLOAT64
             return "double";
         }
         if (type == Type.STRING) {
@@ -42,5 +45,4 @@ public class PrintInstruction implements Instruction {
         }
         return null;
     }
-
 }

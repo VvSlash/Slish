@@ -161,24 +161,39 @@ public class CodeGenerator implements NodeVisitor<String> {
     @Override
     public String visit(Literal literal) {
         String register = generateRegister();
-        Literal.Type litType = literal.getType();
+        Literal.Type litAstType = literal.getType(); // AST Literal Type
+        pl.edu.pw.slish.codegen.Type codegenType; // codegen.Type
 
-        if (litType == Literal.Type.STRING) {
+        if (litAstType == Literal.Type.STRING) {
             String instr = stringManager.generateStringPointerInstruction(register,
                 (String) literal.getValue());
             instructions.add(new RawInstruction(instr));
             return register;
         }
 
-        // numeric or boolean
-        Type type = switch (litType) {
-            case INTEGER -> Type.INTEGER;
-            case FLOAT -> Type.FLOAT;
-            case BOOLEAN -> Type.BOOLEAN;
-            default -> Type.DYNAMIC;
-        };
+        switch (litAstType) {
+            case INTEGER:
+                codegenType = pl.edu.pw.slish.codegen.Type.INTEGER;
+                break;
+            case FLOAT32: // NEW
+                codegenType = pl.edu.pw.slish.codegen.Type.FLOAT32;
+                break;
+            case FLOAT64: // NEW
+                codegenType = pl.edu.pw.slish.codegen.Type.FLOAT64;
+                break;
+            // case FLOAT: // OLD - remove
+            //    codegenType = pl.edu.pw.slish.codegen.Type.FLOAT64; // Default old AST float to codegen.FLOAT64
+            //    break;
+            case BOOLEAN:
+                codegenType = pl.edu.pw.slish.codegen.Type.BOOLEAN;
+                break;
+            default:
+                codegenType = pl.edu.pw.slish.codegen.Type.DYNAMIC; // Should not happen for valid literals
+                instructions.add(new CommentInstruction(
+                    "Warning: Unexpected literal type in codegen: " + litAstType));
+        }
 
-        instructions.add(new LoadConstantInstruction(register, literal.getValue(), type));
+        instructions.add(new LoadConstantInstruction(register, literal.getValue(), codegenType));
         return register;
     }
 
@@ -227,61 +242,187 @@ public class CodeGenerator implements NodeVisitor<String> {
 
     @Override
     public String visit(FunctionCall functionCall) {
-        String register = generateRegister();
-        List<String> argRegisters = new ArrayList<>();
+        String resultReg = generateRegister(); // Register for the result of the function call
+        List<String> argValueRegisters = new ArrayList<>(); // Registers holding evaluated argument values
+        List<Type> argActualTypes = new ArrayList<>(); // Actual types of the arguments
 
-        for (Expression arg : functionCall.getArguments()) {
-            String argRegister = arg.accept(this);
-            argRegisters.add(argRegister);
+        // Evaluate arguments, store their registers and actual types
+        for (Expression argExpr : functionCall.getArguments()) {
+            argValueRegisters.add(argExpr.accept(this));
+            argActualTypes.add(typeChecker.getTypeOf(argExpr));
         }
 
-        // Handle built-in functions (excluding print, which is now handled separately)
         String functionName = functionCall.getFunctionName();
 
-        switch (functionName) {
-            case "add" -> {
-                if (argRegisters.size() == 2) {
-                    instructions.add(new BinaryOperationInstruction(
-                        register,
-                        argRegisters.get(0),
-                        argRegisters.get(1),
-                        BinaryOperationInstruction.Operation.ADD,
-                        Type.DYNAMIC
-                    ));
-                    return register;
+        // Special handling for built-in functions that map to binary operations
+        if ((functionName.equals("add") || functionName.equals("gt") || functionName.equals("lt"))
+            &&
+            functionCall.getArguments().size() == 2) {
+
+            String leftArgInitialReg = argValueRegisters.get(0);
+            String rightArgInitialReg = argValueRegisters.get(1);
+            Type leftArgActualType = argActualTypes.get(0);
+            Type rightArgActualType = argActualTypes.get(1);
+
+            String currentLeftReg = leftArgInitialReg;
+            String currentRightReg = rightArgInitialReg;
+
+            Type llvmInstructionOperandType; // The type the LLVM instruction will operate on (after promotion)
+            Type operationActualResultType;  // The final type of the result register from this operation
+
+            // Determine LLVM operand type and actual result type based on the function
+            if (functionName.equals("add")) {
+                // Promotion logic for ADD: Result is F64 if any F64, F32 if any F32, else INT. Operands promoted accordingly.
+                if (leftArgActualType == Type.FLOAT64 || rightArgActualType == Type.FLOAT64) {
+                    llvmInstructionOperandType = Type.FLOAT64;
+                    operationActualResultType = Type.FLOAT64;
+                } else if (leftArgActualType == Type.FLOAT32
+                    || rightArgActualType == Type.FLOAT32) {
+                    llvmInstructionOperandType = Type.FLOAT32;
+                    operationActualResultType = Type.FLOAT32;
+                } else if (leftArgActualType == Type.INTEGER
+                    && rightArgActualType == Type.INTEGER) {
+                    llvmInstructionOperandType = Type.INTEGER;
+                    operationActualResultType = Type.INTEGER;
+                } else { // Handle cases involving DYNAMIC or type errors (which TypeChecker should catch)
+                    // Default to FLOAT64 if DYNAMIC is involved for arithmetic.
+                    llvmInstructionOperandType = Type.FLOAT64;
+                    operationActualResultType = Type.FLOAT64;
+                    if (leftArgActualType != Type.DYNAMIC && rightArgActualType != Type.DYNAMIC) {
+                        // This indicates a type mismatch not caught or allowed by TypeChecker.
+                        instructions.add(new CommentInstruction(
+                            "Warning: Type mismatch for 'add' builtin: " + leftArgActualType + ", "
+                                + rightArgActualType + ". Defaulting to f64."));
+                    }
+                }
+            } else { // For "gt", "lt" (comparisons) - result is always BOOLEAN
+                operationActualResultType = Type.BOOLEAN;
+                // Determine operand type for comparison (fcmp vs icmp)
+                if (leftArgActualType == Type.FLOAT64 || rightArgActualType == Type.FLOAT64) {
+                    llvmInstructionOperandType = Type.FLOAT64;
+                } else if (leftArgActualType == Type.FLOAT32
+                    || rightArgActualType == Type.FLOAT32) {
+                    llvmInstructionOperandType = Type.FLOAT32;
+                } else if (leftArgActualType == Type.INTEGER
+                    && rightArgActualType == Type.INTEGER) {
+                    llvmInstructionOperandType = Type.INTEGER;
+                } else if (leftArgActualType == Type.BOOLEAN
+                    && rightArgActualType == Type.BOOLEAN) {
+                    llvmInstructionOperandType = Type.BOOLEAN;
+                } else { // Handle DYNAMIC or other potentially comparable types (e.g. strings, if supported by gt/lt)
+                    // Default to FLOAT64 for numeric-like DYNAMIC comparisons.
+                    // TypeChecker should have ensured comparability.
+                    llvmInstructionOperandType = Type.FLOAT64; // A general default for unknown numeric comparison
+                    if ((leftArgActualType == Type.BOOLEAN || rightArgActualType == Type.BOOLEAN)
+                        && !(leftArgActualType == Type.BOOLEAN
+                        && rightArgActualType == Type.BOOLEAN) && !(
+                        leftArgActualType == Type.DYNAMIC || rightArgActualType == Type.DYNAMIC)) {
+                        instructions.add(new CommentInstruction(
+                            "Warning: Comparing boolean with non-boolean for '" + functionName
+                                + "': " + leftArgActualType + ", " + rightArgActualType));
+                        // Defaulting to float64 might be wrong here, but type checker should prevent this.
+                    } else if (leftArgActualType == Type.BOOLEAN
+                        && rightArgActualType == Type.BOOLEAN) {
+                        llvmInstructionOperandType = Type.BOOLEAN;
+                    } else if (leftArgActualType != Type.DYNAMIC
+                        && rightArgActualType != Type.DYNAMIC) {
+                        instructions.add(new CommentInstruction(
+                            "Warning: Unusual type combination for '" + functionName
+                                + "' comparison: " + leftArgActualType + ", " + rightArgActualType
+                                + ". Defaulting operand type to f64."));
+                    }
                 }
             }
-            case "gt" -> {
-                if (argRegisters.size() == 2) {
-                    instructions.add(new BinaryOperationInstruction(
-                        register,
-                        argRegisters.get(0),
-                        argRegisters.get(1),
-                        BinaryOperationInstruction.Operation.GREATER_THAN,
-                        Type.BOOLEAN
-                    ));
-                    return register;
+
+            // --- Perform necessary type casts for operands ---
+            // Cast left operand if its actual type doesn't match the determined LLVM operation type
+            if (leftArgActualType != llvmInstructionOperandType
+                && leftArgActualType != Type.DYNAMIC) {
+                // Check for valid numeric promotions/conversions (int->float, f32->f64)
+                if ((llvmInstructionOperandType == Type.FLOAT64 && (
+                    leftArgActualType == Type.FLOAT32 || leftArgActualType == Type.INTEGER)) ||
+                    (llvmInstructionOperandType == Type.FLOAT32
+                        && leftArgActualType == Type.INTEGER) ||
+                    (llvmInstructionOperandType == Type.INTEGER && (
+                        leftArgActualType == Type.FLOAT32
+                            || leftArgActualType == Type.FLOAT64))) { // Last case is fptosi
+                    String castedLeft = generateRegister();
+                    instructions.add(new TypeCastInstruction(castedLeft, currentLeftReg,
+                        llvmInstructionOperandType, leftArgActualType));
+                    currentLeftReg = castedLeft;
+                } else if (llvmInstructionOperandType
+                    != Type.DYNAMIC) { // Avoid redundant warning if target is dynamic
+                    instructions.add(new CommentInstruction(
+                        "Warning: Potentially unhandled cast from " + leftArgActualType + " to "
+                            + llvmInstructionOperandType + " for left operand of " + functionName));
                 }
             }
-            case "lt" -> {
-                if (argRegisters.size() == 2) {
-                    instructions.add(new BinaryOperationInstruction(
-                        register,
-                        argRegisters.get(0),
-                        argRegisters.get(1),
-                        BinaryOperationInstruction.Operation.LESS_THAN,
-                        Type.BOOLEAN
-                    ));
-                    return register;
+
+            // Cast right operand
+            if (rightArgActualType != llvmInstructionOperandType
+                && rightArgActualType != Type.DYNAMIC) {
+                if ((llvmInstructionOperandType == Type.FLOAT64 && (
+                    rightArgActualType == Type.FLOAT32 || rightArgActualType == Type.INTEGER)) ||
+                    (llvmInstructionOperandType == Type.FLOAT32
+                        && rightArgActualType == Type.INTEGER) ||
+                    (llvmInstructionOperandType == Type.INTEGER && (
+                        rightArgActualType == Type.FLOAT32
+                            || rightArgActualType == Type.FLOAT64))) {
+                    String castedRight = generateRegister();
+                    instructions.add(new TypeCastInstruction(castedRight, currentRightReg,
+                        llvmInstructionOperandType, rightArgActualType));
+                    currentRightReg = castedRight;
+                } else if (llvmInstructionOperandType != Type.DYNAMIC) {
+                    instructions.add(new CommentInstruction(
+                        "Warning: Potentially unhandled cast from " + rightArgActualType + " to "
+                            + llvmInstructionOperandType + " for right operand of "
+                            + functionName));
                 }
             }
+
+            BinaryOperationInstruction.Operation opCode = null;
+            if (functionName.equals("add")) {
+                opCode = BinaryOperationInstruction.Operation.ADD;
+            } else if (functionName.equals("gt")) {
+                opCode = BinaryOperationInstruction.Operation.GREATER_THAN;
+            } else if (functionName.equals("lt")) {
+                opCode = BinaryOperationInstruction.Operation.LESS_THAN;
+            }
+
+            if (opCode != null) {
+                Type finalInstructionOperandType = llvmInstructionOperandType;
+                // If after all logic, llvmInstructionOperandType is DYNAMIC, default to a concrete type for the instruction.
+                if (llvmInstructionOperandType == Type.DYNAMIC) {
+                    finalInstructionOperandType = Type.FLOAT64; // Default to double for operations involving dynamic types.
+                    instructions.add(new CommentInstruction("Info: operands for " + functionName
+                        + " involved DYNAMIC, defaulting instruction operand type to "
+                        + finalInstructionOperandType));
+                }
+
+                instructions.add(new BinaryOperationInstruction(
+                    resultReg, currentLeftReg, currentRightReg,
+                    opCode,
+                    finalInstructionOperandType, // The type for LLVM IR (e.g., i32, float, double)
+                    operationActualResultType
+                    // The type checker's view of the result (e.g. Type.INTEGER, Type.BOOLEAN)
+                ));
+                return resultReg;
+            }
+            // If opCode remained null (e.g., wrong arg count handled by initial if but not specific error), fall through.
+            // Or, if arg count was wrong, we'd fall through from the start.
+            instructions.add(new CommentInstruction(
+                "Warning: Builtin '" + functionName + "' with arg count "
+                    + functionCall.getArguments().size() + " fell through to default call."));
         }
 
-        // Default function call handling
-        instructions.add(new CallInstruction(register, functionName, argRegisters, Type.DYNAMIC));
-        return register;
+        // Default function call handling for user-defined functions or other built-ins
+        Type returnTypeFromChecker = typeChecker.getFunctionReturnType(functionName);
+        instructions.add(
+            new CallInstruction(resultReg, functionName, argValueRegisters, returnTypeFromChecker));
+        return resultReg;
     }
 
+    // In CodeGenerator.java
     @Override
     public String visit(BinaryOperation binOp) {
         String leftReg = binOp.getLeft().accept(this);
@@ -290,13 +431,16 @@ public class CodeGenerator implements NodeVisitor<String> {
                 return genShortCircuitAnd(binOp, leftReg);
             case OR:
                 return genShortCircuitOr(binOp, leftReg);
-            case XOR: {
+            case XOR: { // Assuming XOR is for boolean types as per TypeChecker logic
                 String rightReg = binOp.getRight().accept(this);
                 String resReg = generateRegister();
+                // TypeChecker ensures left and right are boolean for XOR.
+                // The result of XOR is also boolean.
                 instructions.add(new BinaryOperationInstruction(
                     resReg, leftReg, rightReg,
                     BinaryOperationInstruction.Operation.XOR,
-                    Type.BOOLEAN
+                    Type.BOOLEAN, // Operand type for LLVM 'xor' instruction (i1 for boolean)
+                    Type.BOOLEAN  // Actual result type of the operation
                 ));
                 return resReg;
             }
@@ -305,34 +449,160 @@ public class CodeGenerator implements NodeVisitor<String> {
         }
     }
 
+    // In CodeGenerator.java
     private String genRegularBinary(BinaryOperation binOp, String leftReg) {
-        String rightReg = binOp.getRight().accept(this);
+        String rightRegRaw = binOp.getRight().accept(this); // Renamed to avoid conflict
         String resultReg = generateRegister();
-        BinaryOperationInstruction.Operation op = switch (binOp.getOperator()) {
+
+        Type leftType = typeChecker.getTypeOf(binOp.getLeft());
+        Type rightType = typeChecker.getTypeOf(binOp.getRight());
+        Type resultBinOpType = typeChecker.getTypeOf(binOp); // Overall result type from TypeChecker
+
+        String currentLeftReg = leftReg;
+        String currentRightReg = rightRegRaw;
+
+        // Handle type promotions for LLVM (float/double)
+        // If result is Float64, and one operand is Float32, extend it
+        if (resultBinOpType == Type.FLOAT64) {
+            if (leftType == Type.FLOAT32
+                && rightType != Type.FLOAT32) { // left is F32, right is F64 or Int
+                String extendedLeft = generateRegister();
+                instructions.add(new TypeCastInstruction(extendedLeft, currentLeftReg, Type.FLOAT64,
+                    Type.FLOAT32)); // fpext
+                currentLeftReg = extendedLeft;
+                leftType = Type.FLOAT64;
+            }
+            if (rightType == Type.FLOAT32
+                && leftType != Type.FLOAT32) { // right is F32, left is F64 or Int
+                String extendedRight = generateRegister();
+                instructions.add(
+                    new TypeCastInstruction(extendedRight, currentRightReg, Type.FLOAT64,
+                        Type.FLOAT32)); // fpext
+                currentRightReg = extendedRight;
+                rightType = Type.FLOAT64;
+            }
+            // If one is Integer and target is Float64
+            if (leftType == Type.INTEGER) {
+                String convertedLeft = generateRegister();
+                instructions.add(
+                    new TypeCastInstruction(convertedLeft, currentLeftReg, Type.FLOAT64,
+                        Type.INTEGER)); // sitofp
+                currentLeftReg = convertedLeft;
+                leftType = Type.FLOAT64;
+            }
+            if (rightType == Type.INTEGER) {
+                String convertedRight = generateRegister();
+                instructions.add(
+                    new TypeCastInstruction(convertedRight, currentRightReg, Type.FLOAT64,
+                        Type.INTEGER)); // sitofp
+                currentRightReg = convertedRight;
+                rightType = Type.FLOAT64;
+            }
+        } else if (resultBinOpType == Type.FLOAT32) {
+            // If result is Float32, operands should be compatible.
+            // Convert integers to float32
+            if (leftType == Type.INTEGER) {
+                String convertedLeft = generateRegister();
+                instructions.add(
+                    new TypeCastInstruction(convertedLeft, currentLeftReg, Type.FLOAT32,
+                        Type.INTEGER)); // sitofp
+                currentLeftReg = convertedLeft;
+                leftType = Type.FLOAT32;
+            } else if (leftType == Type.FLOAT64) { // NEW: Handle F64 -> F32 if result is F32
+                String truncatedLeft = generateRegister();
+                instructions.add(
+                    new TypeCastInstruction(truncatedLeft, currentLeftReg, Type.FLOAT32,
+                        Type.FLOAT64)); // fptrunc
+                currentLeftReg = truncatedLeft;
+                leftType = Type.FLOAT32;
+            }
+
+            if (rightType == Type.INTEGER) {
+                String convertedRight = generateRegister();
+                instructions.add(
+                    new TypeCastInstruction(convertedRight, currentRightReg, Type.FLOAT32,
+                        Type.INTEGER)); // sitofp
+                currentRightReg = convertedRight;
+                rightType = Type.FLOAT32;
+            } else if (rightType == Type.FLOAT64) { // NEW: Handle F64 -> F32 if result is F32
+                String truncatedRight = generateRegister();
+                instructions.add(
+                    new TypeCastInstruction(truncatedRight, currentRightReg, Type.FLOAT32,
+                        Type.FLOAT64)); // fptrunc
+                currentRightReg = truncatedRight;
+                rightType = Type.FLOAT32;
+            }
+        }
+
+        BinaryOperationInstruction.Operation llvmOp = switch (binOp.getOperator()) {
             case ADD -> BinaryOperationInstruction.Operation.ADD;
             case SUBTRACT -> BinaryOperationInstruction.Operation.SUBTRACT;
             case MULTIPLY -> BinaryOperationInstruction.Operation.MULTIPLY;
             case DIVIDE -> BinaryOperationInstruction.Operation.DIVIDE;
-            case MODULO -> BinaryOperationInstruction.Operation.MODULO;
+            case MODULO -> BinaryOperationInstruction.Operation.MODULO; // Stays integer
             case EQUAL -> BinaryOperationInstruction.Operation.EQUAL;
             case NOT_EQUAL -> BinaryOperationInstruction.Operation.NOT_EQUAL;
             case GREATER_THAN -> BinaryOperationInstruction.Operation.GREATER_THAN;
             case LESS_THAN -> BinaryOperationInstruction.Operation.LESS_THAN;
             case GREATER_EQUAL -> BinaryOperationInstruction.Operation.GREATER_EQUAL;
             case LESS_EQUAL -> BinaryOperationInstruction.Operation.LESS_EQUAL;
-            default ->
-                throw new IllegalArgumentException("Nieznany operator: " + binOp.getOperator());
+            // AND, OR, XOR handled by short-circuit or direct bitwise for integers
+            default -> throw new IllegalArgumentException(
+                "Nieznany operator dla genRegularBinary: " + binOp.getOperator());
         };
 
-        Type resultType = switch (op) {
-            case EQUAL, NOT_EQUAL, GREATER_THAN, LESS_THAN, GREATER_EQUAL, LESS_EQUAL ->
-                Type.BOOLEAN;
-            default -> typeChecker.getTypeOf(binOp); // fixed here
-        };
+        // The type for the BinaryOperationInstruction should be the type of the operands *after* promotion
+        // For comparisons, the result is boolean, but operands might be float/double.
+        Type instructionOperandType = leftType; // Assume left and right are same type after promotion
+        if (llvmOp == BinaryOperationInstruction.Operation.EQUAL ||
+            llvmOp == BinaryOperationInstruction.Operation.NOT_EQUAL ||
+            llvmOp == BinaryOperationInstruction.Operation.GREATER_THAN ||
+            llvmOp == BinaryOperationInstruction.Operation.LESS_THAN ||
+            llvmOp == BinaryOperationInstruction.Operation.GREATER_EQUAL ||
+            llvmOp == BinaryOperationInstruction.Operation.LESS_EQUAL) {
+            // For comparisons, operand types are important for fcmp/icmp. Result is BOOLEAN.
+            // We need to ensure currentLeftReg and currentRightReg are of compatible types for comparison.
+            // If one is float64 and other is float32, promote float32 to float64 for comparison.
+            if (leftType == Type.FLOAT64 && rightType == Type.FLOAT32) {
+                String extendedRight = generateRegister();
+                instructions.add(
+                    new TypeCastInstruction(extendedRight, currentRightReg, Type.FLOAT64,
+                        Type.FLOAT32));
+                currentRightReg = extendedRight;
+                instructionOperandType = Type.FLOAT64;
+            } else if (leftType == Type.FLOAT32 && rightType == Type.FLOAT64) {
+                String extendedLeft = generateRegister();
+                instructions.add(new TypeCastInstruction(extendedLeft, currentLeftReg, Type.FLOAT64,
+                    Type.FLOAT32));
+                currentLeftReg = extendedLeft;
+                instructionOperandType = Type.FLOAT64;
+            } else if ((leftType == Type.FLOAT32 || leftType == Type.FLOAT64)
+                && rightType == Type.INTEGER) {
+                String convertedRight = generateRegister();
+                instructions.add(new TypeCastInstruction(convertedRight, currentRightReg, leftType,
+                    Type.INTEGER)); // int to float matching left
+                currentRightReg = convertedRight;
+                instructionOperandType = leftType;
+            } else if ((rightType == Type.FLOAT32 || rightType == Type.FLOAT64)
+                && leftType == Type.INTEGER) {
+                String convertedLeft = generateRegister();
+                instructions.add(new TypeCastInstruction(convertedLeft, currentLeftReg, rightType,
+                    Type.INTEGER)); // int to float matching right
+                currentLeftReg = convertedLeft;
+                instructionOperandType = rightType;
+            } else {
+                instructionOperandType = leftType; // Or rightType, should be same numeric category
+            }
+            instructions.add(
+                new BinaryOperationInstruction(resultReg, currentLeftReg, currentRightReg, llvmOp,
+                    instructionOperandType, Type.BOOLEAN));
 
-        instructions.add(new BinaryOperationInstruction(
-            resultReg, leftReg, rightReg, op, resultType
-        ));
+        } else {
+            // For arithmetic operations, resultBinOpType is the type of the result register
+            instructions.add(
+                new BinaryOperationInstruction(resultReg, currentLeftReg, currentRightReg, llvmOp,
+                    resultBinOpType, resultBinOpType));
+        }
         return resultReg;
     }
 
@@ -937,72 +1207,216 @@ public class CodeGenerator implements NodeVisitor<String> {
 
     @Override
     public String visit(ArrayLiteral arrayLiteral) {
-
-
         List<Expression> elems = arrayLiteral.getElements();
-        int n = elems.size();
+        int numElements = elems.size();
 
-        // 2) Determine LLVM element type. Default to i32 if “dynamic”:
-        Type elementType = Type.DYNAMIC;
-        if (n > 0 && elems.get(0) instanceof Literal) {
-            elementType = determineTypeFromLiteral((Literal) elems.get(0));
+        // 1. Determine the Slish Element Type from TypeChecker
+        // typeChecker.getTypeOf(arrayLiteral) should return the Slish array type (e.g., Type for int[], float32[], etc.)
+        Type slishArrayOverallType = typeChecker.getTypeOf(arrayLiteral);
+        Type slishElementType; // This will be the Slish type of the elements (e.g., Type.INTEGER, Type.FLOAT32)
+
+        if (slishArrayOverallType != null && slishArrayOverallType.isArray()) {
+            slishElementType = slishArrayOverallType.getElementType();
+        } else {
+            // Fallback if TypeChecker didn't provide a proper array type. This indicates an issue.
+            instructions.add(new CommentInstruction(
+                "Error: ArrayLiteral node did not resolve to an array type via TypeChecker. Found: "
+                    +
+                    (slishArrayOverallType != null ? slishArrayOverallType.getTypeName() : "null")
+                    + ". Defaulting element type to DYNAMIC."
+            ));
+            slishElementType = Type.DYNAMIC;
         }
-        String llvmElemTy = "i32";
-        if (elementType == Type.FLOAT)   llvmElemTy = "float";
-        if (elementType == Type.BOOLEAN) llvmElemTy = "i1";
-        if (elementType == Type.STRING)  llvmElemTy = "i8*";
-        // … add other cases if needed …
 
-        // 3) Build “[N x T]”
-        String llvmArrayTy = "[" + n + " x " + llvmElemTy + "]";
+        // If the determined element type is DYNAMIC, try to infer a more concrete type
+        // from the first element, especially for LLVM code generation.
+        if (slishElementType == Type.DYNAMIC && numElements > 0) {
+            Expression firstElementExpr = elems.get(0);
+            Type firstElementActualType = typeChecker.getTypeOf(firstElementExpr);
+            if (firstElementActualType != Type.DYNAMIC) {
+                slishElementType = firstElementActualType; // Use the type of the first element if it's concrete
+                instructions.add(new CommentInstruction(
+                    "Info: ArrayLiteral's element type was DYNAMIC. Refined to " +
+                        slishElementType.getTypeName()
+                        + " based on the first element for LLVM code gen."
+                ));
+            } else if (firstElementExpr instanceof Literal) {
+                // If first element is a literal and still typed as DYNAMIC by checker, use its AST literal type.
+                slishElementType = determineTypeFromLiteral((Literal) firstElementExpr);
+                if (slishElementType != Type.DYNAMIC) {
+                    instructions.add(new CommentInstruction(
+                        "Info: ArrayLiteral's element type was DYNAMIC. Refined to " +
+                            slishElementType.getTypeName()
+                            + " based on the first AST Literal type for LLVM code gen."
+                    ));
+                }
+            }
+        }
+        // If still DYNAMIC after fallbacks, it will map to i8* or similar generic pointer.
+        if (slishElementType == Type.DYNAMIC) {
+            instructions.add(new CommentInstruction(
+                "Warning: Element type for array literal remains DYNAMIC. LLVM type will be generic (e.g., i8*)."));
+        }
 
-        // 4) alloca [N x T]:
-        String arrayAllocReg = generateRegister(); // e.g. “r3”
+        // 2. Get the LLVM type string for a single element
+        String llvmElementTyStr = mapToLLVMType(
+            slishElementType); // e.g., "i32", "float", "double", "i8*"
+
+        // 3. Build the LLVM array type string: "[N x T]"
+        String llvmArrayTyStr = "[" + numElements + " x " + llvmElementTyStr + "]";
+
+        // 4. Allocate memory for the array on the stack
+        String arrayAllocReg = generateRegister(); // e.g., %r0
+        int alignment = 16; // Default alignment. Can be refined based on llvmElementTyStr.
+        // Example refinement for alignment (LLVM often handles this well if unspecified for `alloca`):
+        if (llvmElementTyStr.equals("double") || llvmElementTyStr.endsWith("**")) {
+            alignment = 8; // double or array of pointers
+        } else if (llvmElementTyStr.equals("float") || llvmElementTyStr.equals("i32") || (
+            llvmElementTyStr.endsWith("*") && !llvmElementTyStr.endsWith("**"))) {
+            alignment = 4; // float, i32, or single pointer
+        } else if (llvmElementTyStr.equals("i1") || llvmElementTyStr.equals("i8")) {
+            alignment = 1;
+        }
+
         instructions.add(new RawInstruction(
-            "%" + arrayAllocReg
-                + " = alloca " + llvmArrayTy + ", align 16"
+            "%" + arrayAllocReg + " = alloca " + llvmArrayTyStr + ", align " + alignment
         ));
 
-        // 5) For each element, GEP + store:
-        for (int i = 0; i < n; i++) {
-            // a) evaluate element → e.g. “r5”
-            String valueReg = elems.get(i).accept(this);
+        // 5. Populate the array: Evaluate each element, cast if necessary, and store it
+        for (int i = 0; i < numElements; i++) {
+            Expression currentElementExpr = elems.get(i);
+            String elementValueReg = currentElementExpr.accept(
+                this); // Register holding the element's value
+            Type actualElementSlishType = typeChecker.getTypeOf(
+                currentElementExpr); // Slish type of the current element
 
-            // b) getelementptr to slot i:
+            String regToStore = elementValueReg;
+
+            // If the actual Slish type of the element differs from the array's target element type,
+            // and a cast is necessary and possible.
+            if (!actualElementSlishType.equals(slishElementType) &&
+                actualElementSlishType != Type.DYNAMIC && slishElementType != Type.DYNAMIC) {
+
+                boolean requiresExplicitCast = false;
+                // Common numeric promotions/conversions for storage:
+                if (slishElementType == Type.FLOAT64 && (actualElementSlishType == Type.FLOAT32
+                    || actualElementSlishType == Type.INTEGER)) {
+                    requiresExplicitCast = true; // fpext float to double, sitofp i32 to double
+                } else if (slishElementType == Type.FLOAT32
+                    && actualElementSlishType == Type.INTEGER) {
+                    requiresExplicitCast = true; // sitofp i32 to float
+                } else if (slishElementType == Type.FLOAT32
+                    && actualElementSlishType == Type.FLOAT64) {
+                    requiresExplicitCast = true; // fptrunc double to float
+                } else if (slishElementType == Type.INTEGER && (
+                    actualElementSlishType == Type.FLOAT32
+                        || actualElementSlishType == Type.FLOAT64)) {
+                    requiresExplicitCast = true; // fptosi float/double to i32
+                }
+
+                if (requiresExplicitCast) {
+                    String castedElementReg = generateRegister();
+                    instructions.add(
+                        new TypeCastInstruction(castedElementReg, elementValueReg, slishElementType,
+                            actualElementSlishType));
+                    regToStore = castedElementReg;
+                    instructions.add(new CommentInstruction(
+                        "Casted array element from " + actualElementSlishType.getTypeName() + " to "
+                            + slishElementType.getTypeName() + " for storage."));
+                } else {
+                    // If types are different but no common explicit cast rule matched above,
+                    // it implies either TypeChecker allowed an unsafe/unhandled implicit conversion or there's an issue.
+                    instructions.add(new CommentInstruction(
+                        "Warning: Storing element of Slish type "
+                            + actualElementSlishType.getTypeName() +
+                            " into array of Slish type " + slishElementType.getTypeName() +
+                            " without an explicit LLVM cast. TypeChecker should ensure compatibility."
+                    ));
+                }
+            } else if (actualElementSlishType == Type.DYNAMIC && slishElementType != Type.DYNAMIC) {
+                // Storing a DYNAMIC typed value into a statically typed array.
+                // This is inherently risky at the LLVM level without runtime type info.
+                // We assume the DYNAMIC value is assignment-compatible. No LLVM cast is generated here.
+                instructions.add(new CommentInstruction(
+                    "Warning: Storing DYNAMIC Slish type element into statically typed array of " +
+                        slishElementType.getTypeName() + ". Assuming runtime compatibility."
+                ));
+            }
+
+            // Get a pointer to the i-th element of the array
             String gepReg = generateRegister();
             instructions.add(new RawInstruction(
-                "%" + gepReg
-                    + " = getelementptr inbounds " + llvmArrayTy + ", "
-                    + llvmArrayTy + "* %" + arrayAllocReg
-                    + ", i32 0, i32 " + i
+                "%" + gepReg + " = getelementptr inbounds " + llvmArrayTyStr + ", " +
+                    llvmArrayTyStr + "* %" + arrayAllocReg + ", i32 0, i32 " + i
             ));
 
-            // c) store into that slot:
+            // Store the element's value (possibly after casting) into the array slot
             instructions.add(new RawInstruction(
-                "store " + llvmElemTy + " %" + valueReg
-                    + ", " + llvmElemTy + "* %" + gepReg
+                "store " + llvmElementTyStr + " %" + regToStore + ", " +
+                    llvmElementTyStr + "* %" + gepReg
             ));
         }
 
-        // 6) Bitcast [N x T]* → T*:
-        String basePtrReg = generateRegister(); // e.g. “r10”
+        // 6. Bitcast the array pointer [N x T]* to T*
+        // This provides a pointer to the first element, a common way to represent arrays.
+        String basePtrReg = generateRegister();
         instructions.add(new RawInstruction(
-            "%" + basePtrReg
-                + " = bitcast " + llvmArrayTy + "* %" + arrayAllocReg
-                + " to " + llvmElemTy + "*"
+            "%" + basePtrReg + " = bitcast " + llvmArrayTyStr + "* %" + arrayAllocReg + " to "
+                + llvmElementTyStr + "*"
         ));
 
-        // Return the _bare_ register name (e.g. “r10”); the caller (e.g. assignment) will do:
-        //    store i32* %r10, i32** %someSlot
-        return basePtrReg;
+        return basePtrReg; // This register holds a T* (e.g., i32*, float*, i8**)
+    }
+
+    private String mapToLLVMType(Type type) {
+        if (type == null) {
+            instructions.add(new CommentInstruction(
+                "Warning: mapToLLVMType received null type, defaulting to i8* (generic pointer)"));
+            return "i8*";
+        }
+        if (type == Type.INTEGER) {
+            return "i32";
+        }
+        if (type == Type.FLOAT32) {
+            return "float";    // LLVM 'float' is 32-bit
+        }
+        if (type == Type.FLOAT64) {
+            return "double";   // LLVM 'double' is 64-bit
+        }
+        if (type == Type.BOOLEAN) {
+            return "i1";
+        }
+        if (type == Type.STRING) {
+            return "i8*";     // Slish string is char*
+        }
+        if (type == Type.VOID) {
+            return "void";
+        }
+        if (type.isArray()) {
+            // This is the type of a variable holding an array, so it's a pointer to the element type.
+            return mapToLLVMType(type.getElementType()) + "*";
+        }
+        if (type == Type.DYNAMIC) {
+            instructions.add(new CommentInstruction(
+                "Info: mapToLLVMType mapping Slish DYNAMIC type to i8* (generic pointer)"));
+            return "i8*";
+        }
+        // Fallback for other complex types (e.g., custom types, function pointers)
+        // This might need expansion based on language features.
+        instructions.add(
+            new CommentInstruction("Warning: mapToLLVMType encountered unhandled Slish type: " +
+                type.getTypeName() + ". Defaulting to i8* (generic pointer)."));
+        return "i8*";
     }
 
     private Type determineTypeFromLiteral(Literal literal) {
         switch (literal.getType()) {
             case INTEGER:
                 return Type.INTEGER;
-            case FLOAT:
-                return Type.FLOAT;
+            case FLOAT32:
+                return Type.FLOAT32;
+            case FLOAT64:
+                return Type.FLOAT64;
             case STRING:
                 return Type.STRING;
             case BOOLEAN:
@@ -1033,6 +1447,15 @@ public class CodeGenerator implements NodeVisitor<String> {
             // Generate the value (register holding the result of the expression)
             String valueReg = expr.accept(this);
             Type type = typeChecker.getTypeOf(expr);
+
+            if (type == Type.FLOAT32) {
+                // Promote float to double for printf, as per C variadic function rules
+                String promotedReg = generateRegister();
+                instructions.add(new TypeCastInstruction(promotedReg, valueReg, Type.FLOAT64,
+                    Type.FLOAT32)); // fpext
+                valueReg = promotedReg; // <--- Update valueReg here to promoted register
+                type = Type.FLOAT64; // Treat as double for printf formatting
+            }
 
             // If it's a boolean, we need to zero-extend it to i32
             if (type == Type.BOOLEAN) {
@@ -1067,7 +1490,8 @@ public class CodeGenerator implements NodeVisitor<String> {
         // Lookup array pointer
         String arrayPtrReg = scopeManager.getVariableRegister(arrayName);
         if (arrayPtrReg == null) {
-            instructions.add(new CommentInstruction("Error: array \"" + arrayName + "\" not found"));
+            instructions.add(
+                new CommentInstruction("Error: array \"" + arrayName + "\" not found"));
             return generateRegister();
         }
 
@@ -1080,7 +1504,8 @@ public class CodeGenerator implements NodeVisitor<String> {
         // Compute element pointer
         String elemPtrReg = generateRegister();
         instructions.add(new RawInstruction(
-            "%" + elemPtrReg + " = getelementptr inbounds i32, i32* %" + basePtrReg + ", i32 %" + indexReg
+            "%" + elemPtrReg + " = getelementptr inbounds i32, i32* %" + basePtrReg + ", i32 %"
+                + indexReg
         ));
 
         // Compute value to store
@@ -1093,7 +1518,6 @@ public class CodeGenerator implements NodeVisitor<String> {
 
         return valueReg;
     }
-
 
 
     @Override

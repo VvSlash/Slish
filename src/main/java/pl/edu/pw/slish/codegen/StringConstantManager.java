@@ -3,6 +3,9 @@ package pl.edu.pw.slish.codegen;
 import java.util.HashMap;
 import java.util.Map;
 
+import static pl.edu.pw.slish.codegen.Type.FLOAT32; // NEW
+import static pl.edu.pw.slish.codegen.Type.FLOAT64; // NEW
+
 /**
  * Manages string constants to avoid duplication in generated LLVM IR. Ensures each unique string
  * literal gets exactly one global declaration.
@@ -67,8 +70,11 @@ public class StringConstantManager {
         if (type == Type.INTEGER) {
             return "getelementptr inbounds [4 x i8], [4 x i8]* @.str_fmt_int, i32 0, i32 0";
         }
-        if (type == Type.FLOAT) {
-            return "getelementptr inbounds [4 x i8], [4 x i8]* @.str_fmt_float, i32 0, i32 0";
+        if (type == FLOAT32) { // Handle FLOAT32
+            return "getelementptr inbounds [4 x i8], [4 x i8]* @.str_fmt_float32, i32 0, i32 0";
+        }
+        if (type == FLOAT64) { // Handle FLOAT64
+            return "getelementptr inbounds [4 x i8], [4 x i8]* @.str_fmt_float64, i32 0, i32 0";
         }
         if (type == Type.STRING) {
             return "getelementptr inbounds [4 x i8], [4 x i8]* @.str_fmt_str, i32 0, i32 0";
@@ -82,10 +88,10 @@ public class StringConstantManager {
     public String generateBuiltinFormatStrings() {
         return """
             @.str_fmt_int = private unnamed_addr constant [4 x i8] c"%d\\0a\\00", align 1
-            @.str_fmt_float = private unnamed_addr constant [4 x i8] c"%f\\0a\\00", align 1
+            @.str_fmt_float32 = private unnamed_addr constant [4 x i8] c"%f\\0a\\00", align 1
+            @.str_fmt_float64 = private unnamed_addr constant [5 x i8] c"%lf\\0a\\00", align 1
             @.str_fmt_str = private unnamed_addr constant [4 x i8] c"%s\\0a\\00", align 1
             @.str_fmt_bool = private unnamed_addr constant [4 x i8] c"%d\\0a\\00", align 1
             """;
     }
-
 }
