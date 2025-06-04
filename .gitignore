@@ -1,7 +1,6 @@
 # Pliki skompilowane i wynikowe
 *.o
 *.obj
-*.exe
 *.dll
 *.so
 *.dylib

@@ -19,6 +19,7 @@ import pl.edu.pw.slish.ast.expr.StringInterpolation;
 import pl.edu.pw.slish.ast.expr.TypeCastPipeExpression;
 import pl.edu.pw.slish.ast.expr.UnaryOperation;
 import pl.edu.pw.slish.ast.expr.Variable;
+import pl.edu.pw.slish.ast.stmt.ArrayAssignment;
 import pl.edu.pw.slish.ast.stmt.Assignment;
 import pl.edu.pw.slish.ast.stmt.Block;
 import pl.edu.pw.slish.ast.stmt.Declaration;
@@ -888,17 +889,6 @@ public class CodeGenerator implements NodeVisitor<String> {
 
     @Override
     public String visit(ArrayAccess arrayAccess) {
-    /*
-      We need to emit something like:
-
-        %arr_ptr  = load i32*, i32** %<slot-of-array-variable>
-        %elem_ptr = getelementptr inbounds i32, i32* %arr_ptr, i32 %index
-        %loaded   = load i32, i32* %elem_ptr
-        → return "%loaded"
-
-      But every time we refer to a register, we must write "%<reg>".
-    */
-
         // 1) Compute index → this returns e.g. "r5"
         String indexReg = arrayAccess.getIndex().accept(this);
 
@@ -947,17 +937,7 @@ public class CodeGenerator implements NodeVisitor<String> {
 
     @Override
     public String visit(ArrayLiteral arrayLiteral) {
-    /*
-      We want something like:
 
-        %rA = alloca [N x i32], align 16
-        ; for each element i:
-        %rB = getelementptr inbounds [N x i32],[N x i32]* %rA, i32 0, i32 i
-        store i32 <value>, i32* %rB
-        ...
-        %rLast = bitcast [N x i32]* %rA to i32*
-        → return "rLast"
-    */
 
         List<Expression> elems = arrayLiteral.getElements();
         int n = elems.size();
@@ -1076,6 +1056,44 @@ public class CodeGenerator implements NodeVisitor<String> {
         currentPipeValueRegister = null;
         return null;
     }
+
+    @Override
+    public String visit(ArrayAssignment arrayAssignment) {
+        String arrayName = arrayAssignment.getArrayName();
+
+        // Compute index expression
+        String indexReg = arrayAssignment.getIndex().accept(this);
+
+        // Lookup array pointer
+        String arrayPtrReg = scopeManager.getVariableRegister(arrayName);
+        if (arrayPtrReg == null) {
+            instructions.add(new CommentInstruction("Error: array \"" + arrayName + "\" not found"));
+            return generateRegister();
+        }
+
+        // Load base pointer
+        String basePtrReg = generateRegister();
+        instructions.add(new RawInstruction(
+            "%" + basePtrReg + " = load i32*, i32** %" + arrayPtrReg
+        ));
+
+        // Compute element pointer
+        String elemPtrReg = generateRegister();
+        instructions.add(new RawInstruction(
+            "%" + elemPtrReg + " = getelementptr inbounds i32, i32* %" + basePtrReg + ", i32 %" + indexReg
+        ));
+
+        // Compute value to store
+        String valueReg = arrayAssignment.getValue().accept(this);
+
+        // Store it
+        instructions.add(new RawInstruction(
+            "store i32 %" + valueReg + ", i32* %" + elemPtrReg
+        ));
+
+        return valueReg;
+    }
+
 
 
     @Override
@@ -1204,64 +1222,6 @@ public class CodeGenerator implements NodeVisitor<String> {
         @Override
         public String generateCode() {
             return register + " = read " + type.getTypeName();
-        }
-    }
-
-    /**
-     * Instrukcja wczytania elementu tablicy.
-     */
-    private static class ArrayLoadInstruction implements Instruction {
-
-        private final String resultRegister;
-        private final String arrayName;
-        private final String indexRegister;
-        private final Type type;
-
-        public ArrayLoadInstruction(String resultRegister, String arrayName, String indexRegister,
-            Type type) {
-            this.resultRegister = resultRegister;
-            this.arrayName = arrayName;
-            this.indexRegister = indexRegister;
-            this.type = type;
-        }
-
-        @Override
-        public String generateCode() {
-            return resultRegister + " = load " + type.getTypeName() + " " + arrayName + "["
-                + indexRegister + "]";
-        }
-    }
-
-    /**
-     * Instrukcja utworzenia tablicy.
-     */
-    private static class ArrayCreateInstruction implements Instruction {
-
-        private final String resultRegister;
-        private final List<String> elementRegisters;
-        private final Type type;
-
-        public ArrayCreateInstruction(String resultRegister, List<String> elementRegisters,
-            Type type) {
-            this.resultRegister = resultRegister;
-            this.elementRegisters = elementRegisters;
-            this.type = type;
-        }
-
-        @Override
-        public String generateCode() {
-            StringBuilder sb = new StringBuilder();
-            sb.append(resultRegister).append(" = array ").append(type.getTypeName())
-                .append(" [").append(elementRegisters.size()).append("]");
-
-            for (int i = 0; i < elementRegisters.size(); i++) {
-                if (i > 0) {
-                    sb.append(",");
-                }
-                sb.append(" ").append(elementRegisters.get(i));
-            }
-
-            return sb.toString();
         }
     }
 

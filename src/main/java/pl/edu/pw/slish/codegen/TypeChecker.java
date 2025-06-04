@@ -21,6 +21,7 @@ import pl.edu.pw.slish.ast.expr.StringInterpolation;
 import pl.edu.pw.slish.ast.expr.TypeCastPipeExpression;
 import pl.edu.pw.slish.ast.expr.UnaryOperation;
 import pl.edu.pw.slish.ast.expr.Variable;
+import pl.edu.pw.slish.ast.stmt.ArrayAssignment;
 import pl.edu.pw.slish.ast.stmt.Assignment;
 import pl.edu.pw.slish.ast.stmt.Block;
 import pl.edu.pw.slish.ast.stmt.Declaration;
@@ -370,31 +371,21 @@ public class TypeChecker implements NodeVisitor<Type> {
     }
 
     @Override
-    public Type visit(Assignment assignment) {
-        String varName = assignment.getTarget().getName();
-        if (!variables.containsKey(varName)) {
-            errors.add("Błąd: Przypisanie do niezadeklarowanej zmiennej: " + varName);
-            return Type.DYNAMIC;
+    public Type visit(Assignment node) {
+        Expression target = node.getTarget();
+        Expression value = node.getValue();
+
+        Type targetType = target.accept(this);
+        Type valueType = value.accept(this);
+
+        if (!targetType.equals(valueType)) {
+            errors.add("Type mismatch in assignment: cannot assign " + valueType + " to " + targetType);
         }
 
-        Type varType = variables.get(varName);
-
-        // Jeśli wartość to ReadExpression, ustawiamy dla niej oczekiwany typ
-        if (assignment.getValue() instanceof ReadExpression) {
-            ReadExpression readExpr = (ReadExpression) assignment.getValue();
-            readExpr.setExpectedType(varType);
-        }
-        Type valueType = assignment.getValue().accept(this);
-        inferredTypes.put(assignment.getValue(), valueType);
-
-        // Podobnie jak w deklaracji, sprawdzamy zgodność typów
-        if (varType != Type.DYNAMIC && !valueType.canCastTo(varType)) {
-            errors.add("Błąd: Niezgodność typów w przypisaniu do " + varName +
-                ". Oczekiwano: " + varType + ", otrzymano: " + valueType);
-        }
-
-        return varType;
+        inferredTypes.put(node, targetType); // Assignment expression gets the type of the target
+        return targetType;
     }
+
 
     @Override
     public Type visit(PipeExpression pipeExpression) {
@@ -825,6 +816,48 @@ public class TypeChecker implements NodeVisitor<Type> {
 
         return Type.VOID; // PrintStatement nic nie zwraca
     }
+
+    @Override
+    public Type visit(ArrayAssignment arrayAssignment) {
+        String arrayName = arrayAssignment.getArrayName();
+        Expression indexExpr = arrayAssignment.getIndex();
+        Expression valueExpr = arrayAssignment.getValue();
+
+        // Sprawdź, czy tablica jest zadeklarowana
+        if (!variables.containsKey(arrayName)) {
+            errors.add("Błąd: Niezadeklarowana tablica: " + arrayName);
+            inferredTypes.put(arrayAssignment, Type.DYNAMIC);
+            return Type.DYNAMIC;
+        }
+
+        Type arrayType = variables.get(arrayName);
+
+        // Indeks musi być typu całkowitego
+        Type indexType = indexExpr.accept(this);
+        if (indexType != Type.INTEGER && indexType != Type.DYNAMIC) {
+            errors.add("Błąd: Indeks tablicy musi być typu całkowitego, otrzymano: " + indexType);
+        }
+
+        // Tablica musi być faktycznie tablicą
+        if (!arrayType.isArray()) {
+            errors.add("Błąd: Zmienna " + arrayName + " nie jest tablicą, jest typu: " + arrayType);
+            inferredTypes.put(arrayAssignment, Type.DYNAMIC);
+            return Type.DYNAMIC;
+        }
+
+        Type elementType = arrayType.getElementType();
+
+        // Sprawdź typ przypisywanej wartości
+        Type valueType = valueExpr.accept(this);
+        if (!valueType.canCastTo(elementType)) {
+            errors.add("Błąd: Nieprawidłowy typ przypisania do elementu tablicy. Oczekiwano: " + elementType + ", otrzymano: " + valueType);
+        }
+
+        inferredTypes.put(arrayAssignment, Type.VOID);
+        return Type.VOID;
+    }
+
+
 
 
     /**

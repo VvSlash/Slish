@@ -19,6 +19,7 @@ import pl.edu.pw.slish.ast.expr.StringInterpolation;
 import pl.edu.pw.slish.ast.expr.TypeCastPipeExpression;
 import pl.edu.pw.slish.ast.expr.UnaryOperation;
 import pl.edu.pw.slish.ast.expr.Variable;
+import pl.edu.pw.slish.ast.stmt.ArrayAssignment;
 import pl.edu.pw.slish.ast.stmt.Assignment;
 import pl.edu.pw.slish.ast.stmt.Block;
 import pl.edu.pw.slish.ast.stmt.Declaration;
@@ -542,23 +543,30 @@ public class AstBuilder extends SlishBaseVisitor<Node> {
     }
 
     @Override
-    public Node visitAssignment(SlishParser.AssignmentContext ctx) {
-        // Obsługa przypisania do zmiennej lokalnej
-        if (ctx.IDENTIFIER() != null) {
-            String name = ctx.IDENTIFIER().getText();
-            Expression value = (Expression) visit(ctx.expression());
-            Variable target = new Variable(name);
-            return new Assignment(target, value);
-        }
-        // Obsługa przypisania do zmiennej z deklaracją
-        else if (ctx.declaration() != null) {
-            Declaration declaration = (Declaration) visit(ctx.declaration());
-            Expression value = (Expression) visit(ctx.expression());
-            Variable target = new Variable(declaration.getName());
-            return new Assignment(target, value);
-        }
-        return null;
+    public Node visitDeclarationAssignment(SlishParser.DeclarationAssignmentContext ctx) {
+        Declaration declaration = (Declaration) visit(ctx.declaration());
+        Expression value = (Expression) visit(ctx.expression());
+        Variable target = new Variable(declaration.getName());
+        return new Assignment(target, value); // or a specialized node if needed
     }
+
+    @Override
+    public Node visitVariableAssignment(SlishParser.VariableAssignmentContext ctx) {
+        String name = ctx.IDENTIFIER().getText();
+        Expression value = (Expression) visit(ctx.expression());
+        Variable target = new Variable(name);
+        return new Assignment(target, value);
+    }
+
+    @Override
+    public Node visitArrayElementAssignment(SlishParser.ArrayElementAssignmentContext ctx) {
+        String arrayName = ctx.IDENTIFIER().getText();
+        Expression index = (Expression) visit(ctx.expression(0));
+        Expression value = (Expression) visit(ctx.expression(1));
+        return new ArrayAssignment(new Variable(arrayName), index, value);
+    }
+
+
 
     @Override
     public Node visitArrayLiteralExpr(SlishParser.ArrayLiteralExprContext ctx) {

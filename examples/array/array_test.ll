@@ -49,5 +49,16 @@ entry:
   %r26 = load i32, i32* %r25
   %r27 = getelementptr inbounds [4 x i8], [4 x i8]* @.str_fmt_int, i32 0, i32 0
   call i32 (i8*, ...) @printf(i8* %r27, i32 %r26)
+  %r28 = add i32 0, 2
+  %r29 = load i32*, i32** %r0
+  %r30 = getelementptr inbounds i32, i32* %r29, i32 %r28
+  %r31 = add i32 0, 0
+  store i32 %r31, i32* %r30
+  %r32 = add i32 0, 2
+  %r33 = load i32*, i32** %r0
+  %r34 = getelementptr inbounds i32, i32* %r33, i32 %r32
+  %r35 = load i32, i32* %r34
+  %r36 = getelementptr inbounds [4 x i8], [4 x i8]* @.str_fmt_int, i32 0, i32 0
+  call i32 (i8*, ...) @printf(i8* %r36, i32 %r35)
   ret i32 0
 }
