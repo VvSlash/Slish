@@ -140,4 +140,9 @@ public class BaseNodeVisitor<T> implements NodeVisitor<T> {
     public T visit(PrintStatement printStatement) {
         return defaultResult;
     }
+
+    @Override
+    public T visit(ArrayAssignment arrayAssignment) {
+        return null;
+    }
 } 

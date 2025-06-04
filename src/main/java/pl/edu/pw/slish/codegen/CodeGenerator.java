@@ -19,6 +19,7 @@ import pl.edu.pw.slish.ast.expr.StringInterpolation;
 import pl.edu.pw.slish.ast.expr.TypeCastPipeExpression;
 import pl.edu.pw.slish.ast.expr.UnaryOperation;
 import pl.edu.pw.slish.ast.expr.Variable;
+import pl.edu.pw.slish.ast.stmt.ArrayAssignment;
 import pl.edu.pw.slish.ast.stmt.Assignment;
 import pl.edu.pw.slish.ast.stmt.Block;
 import pl.edu.pw.slish.ast.stmt.Declaration;
@@ -888,58 +889,112 @@ public class CodeGenerator implements NodeVisitor<String> {
 
     @Override
     public String visit(ArrayAccess arrayAccess) {
-        String resultRegister = generateRegister();
-        String indexRegister = arrayAccess.getIndex().accept(this);
-        String arrayName = arrayAccess.getArrayName();
+        // 1) Compute index → this returns e.g. "r5"
+        String indexReg = arrayAccess.getIndex().accept(this);
 
-        // Sprawdzamy, czy tablica istnieje
-        Type arrayType = scopeManager.getVariableType(arrayName);
-        if (arrayType == null) {
-            // Tablica nie istnieje, tworzymy errorowy komentarz
-            instructions.add(new CommentInstruction("Error: Array " + arrayName + " not found"));
-            return resultRegister;
+        // 2) Find the alloca slot for “array”
+        String arrayVarName = arrayAccess.getArrayName();
+        String allocaSlotReg = scopeManager.getVariableRegister(arrayVarName);
+        // e.g. "r0" if you did: %r0 = alloca i32*, align 8
+        if (allocaSlotReg == null) {
+            instructions.add(new CommentInstruction(
+                "Error: array \"" + arrayVarName + "\" not found"
+            ));
+            return generateRegister(); // give a dummy so codegen continues
         }
 
-        Type elementType = Type.DYNAMIC;
-        if (arrayType.isArray()) {
-            elementType = arrayType.getElementType();
-        } else {
-            instructions.add(
-                new CommentInstruction("Warning: Variable " + arrayName + " is not an array"));
-        }
+        // 3) Load the base‐pointer (i32*) from that slot:
+        //    %rX = load i32*, i32** %r0
+        String arrPtrReg = generateRegister();
+        instructions.add(new RawInstruction(
+            "%" + arrPtrReg
+                + " = load i32*, i32** %" + allocaSlotReg
+        ));
 
-        // Tworzymy instrukcję dostępu do elementu tablicy
-        instructions.add(
-            new ArrayLoadInstruction(resultRegister, arrayName, indexRegister, elementType));
+        // 4) GEP to compute element’s address:
+        //    %rY = getelementptr inbounds i32, i32* %rX, i32 %indexReg
+        String elemPtrReg = generateRegister();
+        instructions.add(new RawInstruction(
+            "%" + elemPtrReg
+                + " = getelementptr inbounds i32, i32* %" + arrPtrReg
+                + ", i32 %" + indexReg
+        ));
 
-        return resultRegister;
+        // 5) Load the actual element:
+        //    %rZ = load i32, i32* %rY
+        String loadedReg = generateRegister();
+        instructions.add(new RawInstruction(
+            "%" + loadedReg
+                + " = load i32, i32* %" + elemPtrReg
+        ));
+
+        // Return e.g. "rZ" (but later callers should remember to prefix “%” if they embed it
+        // into their own RawInstruction). By convention, visitor returns the _bare_ name
+        // (no “%”), but all emissions do prefix it.
+        return loadedReg;
     }
+
 
     @Override
     public String visit(ArrayLiteral arrayLiteral) {
-        String resultRegister = generateRegister();
-        List<String> elementRegisters = new ArrayList<>();
 
-        // Przetwarzamy każdy element tablicy
-        for (Expression element : arrayLiteral.getElements()) {
-            String elementRegister = element.accept(this);
-            elementRegisters.add(elementRegister);
-        }
 
-        // Tworzymy instrukcję utworzenia tablicy
+        List<Expression> elems = arrayLiteral.getElements();
+        int n = elems.size();
+
+        // 2) Determine LLVM element type. Default to i32 if “dynamic”:
         Type elementType = Type.DYNAMIC;
-        if (!arrayLiteral.getElements().isEmpty()) {
-            // Próbujemy ustalić typ elementów na podstawie pierwszego elementu
-            if (arrayLiteral.getElements().get(0) instanceof Literal) {
-                Literal firstElement = (Literal) arrayLiteral.getElements().get(0);
-                elementType = determineTypeFromLiteral(firstElement);
-            }
+        if (n > 0 && elems.get(0) instanceof Literal) {
+            elementType = determineTypeFromLiteral((Literal) elems.get(0));
+        }
+        String llvmElemTy = "i32";
+        if (elementType == Type.FLOAT)   llvmElemTy = "float";
+        if (elementType == Type.BOOLEAN) llvmElemTy = "i1";
+        if (elementType == Type.STRING)  llvmElemTy = "i8*";
+        // … add other cases if needed …
+
+        // 3) Build “[N x T]”
+        String llvmArrayTy = "[" + n + " x " + llvmElemTy + "]";
+
+        // 4) alloca [N x T]:
+        String arrayAllocReg = generateRegister(); // e.g. “r3”
+        instructions.add(new RawInstruction(
+            "%" + arrayAllocReg
+                + " = alloca " + llvmArrayTy + ", align 16"
+        ));
+
+        // 5) For each element, GEP + store:
+        for (int i = 0; i < n; i++) {
+            // a) evaluate element → e.g. “r5”
+            String valueReg = elems.get(i).accept(this);
+
+            // b) getelementptr to slot i:
+            String gepReg = generateRegister();
+            instructions.add(new RawInstruction(
+                "%" + gepReg
+                    + " = getelementptr inbounds " + llvmArrayTy + ", "
+                    + llvmArrayTy + "* %" + arrayAllocReg
+                    + ", i32 0, i32 " + i
+            ));
+
+            // c) store into that slot:
+            instructions.add(new RawInstruction(
+                "store " + llvmElemTy + " %" + valueReg
+                    + ", " + llvmElemTy + "* %" + gepReg
+            ));
         }
 
-        Type arrayType = Type.createArrayType(elementType);
-        instructions.add(new ArrayCreateInstruction(resultRegister, elementRegisters, arrayType));
+        // 6) Bitcast [N x T]* → T*:
+        String basePtrReg = generateRegister(); // e.g. “r10”
+        instructions.add(new RawInstruction(
+            "%" + basePtrReg
+                + " = bitcast " + llvmArrayTy + "* %" + arrayAllocReg
+                + " to " + llvmElemTy + "*"
+        ));
 
-        return resultRegister;
+        // Return the _bare_ register name (e.g. “r10”); the caller (e.g. assignment) will do:
+        //    store i32* %r10, i32** %someSlot
+        return basePtrReg;
     }
 
     private Type determineTypeFromLiteral(Literal literal) {
@@ -1001,6 +1056,44 @@ public class CodeGenerator implements NodeVisitor<String> {
         currentPipeValueRegister = null;
         return null;
     }
+
+    @Override
+    public String visit(ArrayAssignment arrayAssignment) {
+        String arrayName = arrayAssignment.getArrayName();
+
+        // Compute index expression
+        String indexReg = arrayAssignment.getIndex().accept(this);
+
+        // Lookup array pointer
+        String arrayPtrReg = scopeManager.getVariableRegister(arrayName);
+        if (arrayPtrReg == null) {
+            instructions.add(new CommentInstruction("Error: array \"" + arrayName + "\" not found"));
+            return generateRegister();
+        }
+
+        // Load base pointer
+        String basePtrReg = generateRegister();
+        instructions.add(new RawInstruction(
+            "%" + basePtrReg + " = load i32*, i32** %" + arrayPtrReg
+        ));
+
+        // Compute element pointer
+        String elemPtrReg = generateRegister();
+        instructions.add(new RawInstruction(
+            "%" + elemPtrReg + " = getelementptr inbounds i32, i32* %" + basePtrReg + ", i32 %" + indexReg
+        ));
+
+        // Compute value to store
+        String valueReg = arrayAssignment.getValue().accept(this);
+
+        // Store it
+        instructions.add(new RawInstruction(
+            "store i32 %" + valueReg + ", i32* %" + elemPtrReg
+        ));
+
+        return valueReg;
+    }
+
 
 
     @Override
@@ -1129,64 +1222,6 @@ public class CodeGenerator implements NodeVisitor<String> {
         @Override
         public String generateCode() {
             return register + " = read " + type.getTypeName();
-        }
-    }
-
-    /**
-     * Instrukcja wczytania elementu tablicy.
-     */
-    private static class ArrayLoadInstruction implements Instruction {
-
-        private final String resultRegister;
-        private final String arrayName;
-        private final String indexRegister;
-        private final Type type;
-
-        public ArrayLoadInstruction(String resultRegister, String arrayName, String indexRegister,
-            Type type) {
-            this.resultRegister = resultRegister;
-            this.arrayName = arrayName;
-            this.indexRegister = indexRegister;
-            this.type = type;
-        }
-
-        @Override
-        public String generateCode() {
-            return resultRegister + " = load " + type.getTypeName() + " " + arrayName + "["
-                + indexRegister + "]";
-        }
-    }
-
-    /**
-     * Instrukcja utworzenia tablicy.
-     */
-    private static class ArrayCreateInstruction implements Instruction {
-
-        private final String resultRegister;
-        private final List<String> elementRegisters;
-        private final Type type;
-
-        public ArrayCreateInstruction(String resultRegister, List<String> elementRegisters,
-            Type type) {
-            this.resultRegister = resultRegister;
-            this.elementRegisters = elementRegisters;
-            this.type = type;
-        }
-
-        @Override
-        public String generateCode() {
-            StringBuilder sb = new StringBuilder();
-            sb.append(resultRegister).append(" = array ").append(type.getTypeName())
-                .append(" [").append(elementRegisters.size()).append("]");
-
-            for (int i = 0; i < elementRegisters.size(); i++) {
-                if (i > 0) {
-                    sb.append(",");
-                }
-                sb.append(" ").append(elementRegisters.get(i));
-            }
-
-            return sb.toString();
         }
     }
 

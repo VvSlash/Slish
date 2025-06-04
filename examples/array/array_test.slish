@@ -1,0 +1,11 @@
+/int[] array = [1, 2, 3, 4, 5]
+
+/print(array[0])
+
+/print(array[2])
+
+/print(array[4])
+
+array[2] = 0
+
+/print(array[2])

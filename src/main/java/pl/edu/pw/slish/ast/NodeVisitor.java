@@ -35,4 +35,6 @@ public interface NodeVisitor<T> {
     T visit(ReturnPipeStatement returnPipeStatement);
     T visit(UnaryOperation unaryOperation);
     T visit(PrintStatement printStatement);
+
+    T visit(ArrayAssignment arrayAssignment);
 }

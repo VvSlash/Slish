@@ -69,8 +69,9 @@ typeCast
     ;
 
 assignment
-    : declaration '=' expression
-    | IDENTIFIER '=' expression
+    : declaration '=' expression                     # DeclarationAssignment
+    | IDENTIFIER '=' expression                      # VariableAssignment
+    | IDENTIFIER '[' expression ']' '=' expression   # ArrayElementAssignment
     ;
 
 conditionalStatement
