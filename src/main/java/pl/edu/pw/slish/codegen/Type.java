@@ -1,95 +1,73 @@
 package pl.edu.pw.slish.codegen;
 
-/**
- * Reprezentuje typ danych w języku Slish.
- */
 public class Type {
-    // Stałe reprezentujące podstawowe typy
     public static final Type INTEGER = new Type("int");
-    public static final Type FLOAT = new Type("float");
+    public static final Type FLOAT32 = new Type("float32"); // NEW
+    public static final Type FLOAT64 = new Type("float64"); // NEW
+    // public static final Type FLOAT = new Type("float"); // OLD - Remove or comment out
     public static final Type STRING = new Type("string");
     public static final Type BOOLEAN = new Type("bool");
     public static final Type VOID = new Type("void");
     public static final Type DYNAMIC = new Type("_");
     public static final Type FUNCTION = new Type("fun");
-    
+
     private final String typeName;
-    private final Type elementType;  // Typ elementów tablicy, jeśli jest to tablica
-    private final boolean isArray;  // Czy jest to typ tablicowy
-    
+    private final Type elementType;
+    private final boolean isArray;
+
     private Type(String typeName) {
         this.typeName = typeName;
         this.elementType = null;
         this.isArray = false;
     }
-    
+
     private Type(String typeName, Type elementType) {
         this.typeName = typeName;
         this.elementType = elementType;
         this.isArray = true;
     }
-    
+
     public String getTypeName() {
         return typeName;
     }
-    
-    /**
-     * Tworzy nowy typ tablicowy na podstawie typu elementu
-     * 
-     * @param baseType Typ elementów tablicy
-     * @return Nowy typ tablicowy
-     */
+
     public static Type createArrayType(Type baseType) {
         return new Type("array", baseType);
     }
-    
-    /**
-     * Sprawdza czy typ jest tablicowy
-     */
+
     public boolean isArray() {
         return isArray;
     }
-    
-    /**
-     * Zwraca typ elementów tablicy
-     */
+
     public Type getElementType() {
         return elementType;
     }
-    
-    /**
-     * Konwertuje nazwę typu na obiekt Type.
-     */
+
     public static Type fromTypeName(String typeName) {
-        // Sprawdzamy czy to typ tablicowy
         if (typeName.endsWith("[]")) {
             String baseTypeName = typeName.substring(0, typeName.length() - 2);
             Type baseType = fromTypeName(baseTypeName);
             return createArrayType(baseType);
         }
-        
-        // Standardowe typy
+
         if (typeName.equals(INTEGER.typeName)) return INTEGER;
-        if (typeName.equals(FLOAT.typeName)) return FLOAT;
+        if (typeName.equals(FLOAT32.typeName)) return FLOAT32; // NEW
+        if (typeName.equals(FLOAT64.typeName)) return FLOAT64; // NEW
+        // if (typeName.equals(FLOAT.typeName)) return FLOAT; // OLD
         if (typeName.equals(STRING.typeName)) return STRING;
         if (typeName.equals(BOOLEAN.typeName)) return BOOLEAN;
         if (typeName.equals(VOID.typeName)) return VOID;
         if (typeName.equals(DYNAMIC.typeName)) return DYNAMIC;
         if (typeName.equals(FUNCTION.typeName)) return FUNCTION;
-        
-        // Obsługa funkcji (zwracamy FUNCTION dla nazw funkcji)
-        if (typeName.equals("print") || 
-            typeName.equals("add") || 
-            typeName.equals("read") || 
-            typeName.equals("lt") || 
-            typeName.equals("gt") || 
-            typeName.equals("eq")) {
+
+        if (typeName.equals("print") || typeName.equals("add") || typeName.equals("read") ||
+            typeName.equals("lt") || typeName.equals("gt") || typeName.equals("eq")) {
             return FUNCTION;
         }
-        
+
         throw new IllegalArgumentException("Nieznany typ: " + typeName);
     }
-    
+
     @Override
     public String toString() {
         if (isArray && elementType != null) {
@@ -97,70 +75,62 @@ public class Type {
         }
         return typeName;
     }
-    
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
-        
         Type otherType = (Type) obj;
-        
-        // Porównanie typów podstawowych
-        if (!isArray && !otherType.isArray) {
-            return typeName.equals(otherType.typeName);
+        if (!typeName.equals(otherType.typeName)) return false; // Quick check for base name
+        if (isArray != otherType.isArray) return false;
+        if (isArray) {
+            return elementType != null ? elementType.equals(otherType.elementType) : otherType.elementType == null;
         }
-        
-        // Porównanie typów tablicowych
-        if (isArray && otherType.isArray) {
-            if (elementType == null && otherType.elementType == null) return true;
-            if (elementType == null || otherType.elementType == null) return false;
-            return elementType.equals(otherType.elementType);
-        }
-        
-        return false;
+        return true;
     }
-    
+
     @Override
     public int hashCode() {
         int result = typeName.hashCode();
+        result = 31 * result + (isArray ? 1 : 0);
         if (isArray && elementType != null) {
             result = 31 * result + elementType.hashCode();
         }
         return result;
     }
-    
-    /**
-     * Sprawdza czy ten typ może być rzutowany na docelowy typ.
-     * 
-     * @param targetType Typ docelowy
-     * @return true jeśli można rzutować, false w przeciwnym przypadku
-     */
+
     public boolean canCastTo(Type targetType) {
-        // Typ dynamiczny może być rzutowany na dowolny inny typ
         if (this == DYNAMIC || targetType == DYNAMIC) {
             return true;
         }
-        
-        // Każdy typ może być rzutowany na samego siebie
         if (this.equals(targetType)) {
             return true;
         }
-        
-        // Typ funkcji może być rzutowany na typ zwracany przez funkcję
+
+        // Casting between numeric types
+        boolean isThisNumeric = (this == INTEGER || this == FLOAT32 || this == FLOAT64);
+        boolean isTargetNumeric = (targetType == INTEGER || targetType == FLOAT32 || targetType == FLOAT64);
+
+        if (isThisNumeric && isTargetNumeric) {
+            // Allow int to float32/float64
+            if (this == INTEGER && (targetType == FLOAT32 || targetType == FLOAT64)) return true;
+            // Allow float32 to float64
+            if (this == FLOAT32 && targetType == FLOAT64) return true;
+            // Allow float64 to float32 (explicit cast, potential precision loss)
+            if (this == FLOAT64 && targetType == FLOAT32) return true;
+            // Allow float32/float64 to int (explicit cast, potential truncation)
+            if ((this == FLOAT32 || this == FLOAT64) && targetType == INTEGER) return true;
+            return false; // Default deny other numeric conversions unless explicitly listed
+        }
+
         if (this == FUNCTION && targetType != VOID && targetType != FUNCTION) {
             return true;
         }
-        
-        // Typy numeryczne mogą być między sobą konwertowane
-        if ((this == INTEGER || this == FLOAT) && (targetType == INTEGER || targetType == FLOAT)) {
-            return true;
-        }
-        
-        // Dla tablicy, sprawdzamy czy typy elementów są kompatybilne
+
         if (isArray && targetType.isArray) {
-            return elementType.canCastTo(targetType.elementType);
+            return elementType != null && elementType.canCastTo(targetType.elementType);
         }
-        
+
         return false;
     }
-} 
+}

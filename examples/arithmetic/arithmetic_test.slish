@@ -38,41 +38,88 @@
 # ===========================
 
 # dodawanie
-/float x = 5.5 + 2.3
+/float64 x = 5.5 + 2.3
 /print(x)
 
 # odejmowanie
-/float y = 10.7 - 3.2
+/float64 y = 10.7 - 3.2
 /print(y)
 
 # mnożenie
-/float z = 4.5 * 2.0
+/float64 z = 4.5 * 2.0
 /print(z)
 
 # dzielenie
-/float w = 15.6 / 3.0
+/float64 w = 15.6 // 3.0
 /print(w)
 
 # kolejność wykonywania - mnożenie
-/float p = 2.5 + 3.0 * 4.0
+/float64 p = 2.5 + 3.0 * 4.0
 /print(p)
 
 # kolejność wykonywania - dzielenie
-/float q = 20.0 / 4.0 + 1.5
+/float64 q = 20.0 // 4.0 + 1.5
 /print(q)
 
 # wiele tych samych operacji - dodawanie
-/float r = 1.1 + 2.2 + 3.3
+/float64 r = 1.1 + 2.2 + 3.3
 /print(r)
 
 # wiele tych samych operacji - odejmowanie
-/float s = 3.5-0.8-1.5
+/float64 s = 3.5-0.8-1.5
 /print(s)
 
 # wiele tych samych operacji - mnożenie
-/float t = 2.0*3.14*0.5
+/float64 t = 2.0*3.14*0.5
 /print(t)
 
 # wiele tych samych operacji - dzielenie
-/float u = 3.14 // 2.0 // 0.5
+/float64 u = 3.14 // 2.0 // 0.5
 /print(u)
+
+# Float32 - arytmetyka
+# ===========================
+
+# dodawanie
+/float32 fa = 5.5f0 + 2.3f0
+/print(fa)
+
+# odejmowanie
+/float32 fb = 10.7f0 - 3.2f0
+/print(fb)
+
+# mnożenie
+/float32 fc = 4.5f0 * 2.0f0
+/print(fc)
+
+# dzielenie
+/float32 fd = 15.6f0 // 3.0f0
+/print(fd)
+
+# kolejność wykonywania - mnożenie
+/float32 fe = 2.5f0 + 3.0f0 * 4.0f0
+/print(fe)
+
+# kolejność wykonywania - dzielenie
+/float32 ff = 20.0f0 // 4.0f0 + 1.5f0
+/print(ff)
+
+# wiele tych samych operacji - dodawanie
+/float32 fg = 1.1f0 + 2.2f0 + 3.3f0
+/print(fg)
+
+# wiele tych samych operacji - odejmowanie
+/float32 fh = 3.5f0 - 0.8f0 - 1.5f0
+/print(fh)
+
+# wiele tych samych operacji - mnożenie
+/float32 fi = 2.0f0 * 3.14f0 * 0.5f0
+/print(fi)
+
+# wiele tych samych operacji - dzielenie
+/float32 fj = 3.14f0 // 2.0f0 // 0.5f0
+/print(fj)
+
+/if(3.14f0 < 2.0f0){
+  /print("AA")
+}

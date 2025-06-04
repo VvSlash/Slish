@@ -23,28 +23,19 @@ public class AllocaInstruction implements Instruction {
             " = alloca " + mapToLLVMType(type) +
             ", align " + (type == Type.BOOLEAN ? 1 :
             type == Type.INTEGER ? 4 :
-                8);
+                type == Type.FLOAT32 ? 4 : 8);
     }
 
     private String mapToLLVMType(Type type) {
-        if (type == Type.INTEGER) {
-            return "i32";
-        }
-        if (type == Type.FLOAT) {
-            return "double";
-        }
-        if (type == Type.BOOLEAN) {
-            return "i1";
-        }
-        if (type == Type.STRING) {
-            return "i8*";
-        }
-        if (type == Type.DYNAMIC) {
-            return "i8*";
-        }
-        if (type.isArray()) {
-            return mapToLLVMType(type.getElementType()) + "*";
-        }
-        throw new IllegalArgumentException("Unsupported type: " + type);
+        if (type == null) return "i32"; // Fallback, should not happen
+        if (type == Type.INTEGER) return "i32";
+        if (type == Type.FLOAT32) return "float"; // LLVM 'float' is 32-bit
+        if (type == Type.FLOAT64) return "double"; // LLVM 'double' is 64-bit
+        if (type == Type.BOOLEAN) return "i1";
+        if (type == Type.STRING) return "i8*"; // Pointer to char
+        if (type == Type.VOID) return "void";
+        if (type.isArray()) return mapToLLVMType(type.getElementType()) + "*";
+        if (type == Type.DYNAMIC) return "i8*"; // Or handle appropriately
+        throw new IllegalArgumentException("Unsupported type for LLVM mapping: " + type.getTypeName());
     }
 } 

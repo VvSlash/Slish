@@ -1,0 +1,4 @@
+# Float32 test
+
+/float32 x = 3.14f0
+/print(x)
